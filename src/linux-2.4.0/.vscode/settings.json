@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "iterator": "c",
+        "locale": "c",
+        "string": "c",
+        "chrono": "c"
+    }
+}
