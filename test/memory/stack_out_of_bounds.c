@@ -25,6 +25,7 @@ int main(int argc, char* argv[]) {
     // check argc count and is valid
     if (argc < 2) {
         printf("please select test case.\n");
+        return 0;
     }
 
     if (strcmp(argv[1], "access_not_alloc") == 0) {
