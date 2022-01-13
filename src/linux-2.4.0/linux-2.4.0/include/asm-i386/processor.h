@@ -324,10 +324,10 @@ typedef struct {
 	unsigned long seg;
 } mm_segment_t;
 
-struct tss_struct {
+struct tss_struct { // per cpu to tss
 	unsigned short	back_link,__blh;
-	unsigned long	esp0;
-	unsigned short	ss0,__ss0h;
+	unsigned long	esp0; // cpu当前运行的进程的栈地址
+	unsigned short	ss0,__ss0h; // ss0 map ds. data segment.
 	unsigned long	esp1;
 	unsigned short	ss1,__ss1h;
 	unsigned long	esp2;
@@ -443,8 +443,8 @@ unsigned long get_wchan(struct task_struct *p);
 #define KSTK_EIP(tsk)	(((unsigned long *)(4096+(unsigned long)(tsk)))[1019])
 #define KSTK_ESP(tsk)	(((unsigned long *)(4096+(unsigned long)(tsk)))[1022])
 
-#define THREAD_SIZE (2*PAGE_SIZE)
-#define alloc_task_struct() ((struct task_struct *) __get_free_pages(GFP_KERNEL,1))
+#define THREAD_SIZE (2*PAGE_SIZE) // 内核线程栈大小（事实上需减去task_struct占用的内存）
+#define alloc_task_struct() ((struct task_struct *) __get_free_pages(GFP_KERNEL,1)) // 分配两页内存 2^1
 #define free_task_struct(p) free_pages((unsigned long) (p), 1)
 #define get_task_struct(tsk)      atomic_inc(&virt_to_page(tsk)->count)
 

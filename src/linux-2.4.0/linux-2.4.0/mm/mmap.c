@@ -117,11 +117,11 @@ void unlock_vma_mappings(struct vm_area_struct *vma)
  *  to a regular file.  in this case, the unmapping will need
  *  to invoke file system routines that need the global lock.
  */
-asmlinkage unsigned long sys_brk(unsigned long brk)
+asmlinkage unsigned long sys_brk(unsigned long brk) // 调整进程中堆的内存边界 堆从低地址向高地址增长
 {
 	unsigned long rlim, retval;
 	unsigned long newbrk, oldbrk;
-	struct mm_struct *mm = current->mm;
+	struct mm_struct *mm = current->mm; // get current task_struct form esp register.
 
 	down(&mm->mmap_sem);
 
@@ -133,8 +133,8 @@ asmlinkage unsigned long sys_brk(unsigned long brk)
 		goto set_brk;
 
 	/* Always allow shrinking brk. */
-	if (brk <= mm->brk) {
-		if (!do_munmap(mm, newbrk, oldbrk-newbrk))
+	if (brk <= mm->brk) { // 收缩
+		if (!do_munmap(mm, newbrk, oldbrk-newbrk)) // 堆的收缩理论上不会导致空洞
 			goto set_brk;
 		goto out;
 	}
@@ -250,11 +250,11 @@ unsigned long do_mmap_pgoff(struct file * file, unsigned long addr, unsigned lon
 	/* Obtain the address to map to. we verify (or select) it and ensure
 	 * that it represents a valid section of the address space.
 	 */
-	if (flags & MAP_FIXED) {
+	if (flags & MAP_FIXED) { // (flags & MAP_FIXED) == 0 表示映射只是个参考值 可以由内核自行分配
 		if (addr & ~PAGE_MASK)
 			return -EINVAL;
 	} else {
-		addr = get_unmapped_area(addr, len);
+		addr = get_unmapped_area(addr, len); // 找一个长度为len的空洞，起点为addr
 		if (!addr)
 			return -ENOMEM;
 	}
@@ -306,7 +306,7 @@ unsigned long do_mmap_pgoff(struct file * file, unsigned long addr, unsigned lon
 
 	/* Clear old maps */
 	error = -ENOMEM;
-	if (do_munmap(mm, addr, len))
+	if (do_munmap(mm, addr, len)) // 如果[addr, addr + len]中间已经有vm_area do_munmap释放中间的vm_area
 		goto free_vma;
 
 	/* Check against address space limit. */
@@ -329,11 +329,11 @@ unsigned long do_mmap_pgoff(struct file * file, unsigned long addr, unsigned lon
 		}
 		vma->vm_file = file;
 		get_file(file);
-		error = file->f_op->mmap(file, vma);
+		error = file->f_op->mmap(file, vma); // 调用文件系统的mmap
 		if (error)
 			goto unmap_and_free_vma;
 	} else if (flags & MAP_SHARED) {
-		error = shmem_zero_setup(vma);
+		error = shmem_zero_setup(vma); // 共享内存?
 		if (error)
 			goto free_vma;
 	}
@@ -346,14 +346,14 @@ unsigned long do_mmap_pgoff(struct file * file, unsigned long addr, unsigned lon
 	flags = vma->vm_flags;
 	addr = vma->vm_start;
 
-	insert_vm_struct(mm, vma);
+	insert_vm_struct(mm, vma); // 插入vm_area
 	if (correct_wcount)
 		atomic_inc(&file->f_dentry->d_inode->i_writecount);
 	
 	mm->total_vm += len >> PAGE_SHIFT;
 	if (flags & VM_LOCKED) {
 		mm->locked_vm += len >> PAGE_SHIFT;
-		make_pages_present(addr, addr + len);
+		make_pages_present(addr, addr + len); // 分配对应的物理内存页
 	}
 	return addr;
 
@@ -364,7 +364,7 @@ unmap_and_free_vma:
 	fput(file);
 	/* Undo any partial mapping done by a device driver. */
 	flush_cache_range(mm, vma->vm_start, vma->vm_end);
-	zap_page_range(mm, vma->vm_start, vma->vm_end - vma->vm_start);
+	zap_page_range(mm, vma->vm_start, vma->vm_end - vma->vm_start); // 释放对应的物理内存页
 	flush_tlb_range(mm, vma->vm_start, vma->vm_end);
 free_vma:
 	kmem_cache_free(vm_area_cachep, vma);
@@ -376,17 +376,17 @@ free_vma:
  * Return value 0 means ENOMEM.
  */
 #ifndef HAVE_ARCH_UNMAPPED_AREA
-unsigned long get_unmapped_area(unsigned long addr, unsigned long len)
+unsigned long get_unmapped_area(unsigned long addr, unsigned long len) // 从mm中找一个长度为len的空洞
 {
 	struct vm_area_struct * vmm;
 
 	if (len > TASK_SIZE)
 		return 0;
-	if (!addr)
+	if (!addr) // addr == 0 从TASK_UNMAPPED_BASE开始查找
 		addr = TASK_UNMAPPED_BASE;
 	addr = PAGE_ALIGN(addr);
 
-	for (vmm = find_vma(current->mm, addr); ; vmm = vmm->vm_next) {
+	for (vmm = find_vma(current->mm, addr); ; vmm = vmm->vm_next) { // 从mm中遍历寻找第一个满足len大小的空洞
 		/* At this point:  (!vmm || addr < vmm->vm_end). */
 		if (TASK_SIZE - len < addr)
 			return 0;
@@ -538,7 +538,7 @@ struct vm_area_struct * find_extend_vma(struct mm_struct * mm, unsigned long add
  */
 static struct vm_area_struct * unmap_fixup(struct mm_struct *mm, 
 	struct vm_area_struct *area, unsigned long addr, size_t len, 
-	struct vm_area_struct *extra)
+	struct vm_area_struct *extra) // area 表示待调整的 vm_area. addr表示起始地址 len表示要释放的内存长度
 {
 	struct vm_area_struct *mpnt;
 	unsigned long end = addr + len;
@@ -548,7 +548,7 @@ static struct vm_area_struct * unmap_fixup(struct mm_struct *mm,
 		area->vm_mm->locked_vm -= len >> PAGE_SHIFT;
 
 	/* Unmapping the whole area. */
-	if (addr == area->vm_start && end == area->vm_end) {
+	if (addr == area->vm_start && end == area->vm_end) { // 如果要释放的内存覆盖整个area
 		if (area->vm_ops && area->vm_ops->close)
 			area->vm_ops->close(area);
 		if (area->vm_file)
@@ -558,16 +558,16 @@ static struct vm_area_struct * unmap_fixup(struct mm_struct *mm,
 	}
 
 	/* Work out to one of the ends. */
-	if (end == area->vm_end) {
+	if (end == area->vm_end) { // 尾对齐 剩余的是 [area->vm_start, addr]
 		area->vm_end = addr;
 		lock_vma_mappings(area);
 		spin_lock(&mm->page_table_lock);
-	} else if (addr == area->vm_start) {
+	} else if (addr == area->vm_start) { // 头对齐 剩余的是 [addr, area->vm_end]
 		area->vm_pgoff += (end - area->vm_start) >> PAGE_SHIFT;
 		area->vm_start = end;
 		lock_vma_mappings(area);
 		spin_lock(&mm->page_table_lock);
-	} else {
+	} else { // 中间挖空剩余两部分 [area->vm_start, addr], [end, area->vm_end]
 	/* Unmapping a hole: area->vm_start < addr <= end < area->vm_end */
 		/* Add end mapping -- leave beginning for below */
 		mpnt = extra;
@@ -597,7 +597,7 @@ static struct vm_area_struct * unmap_fixup(struct mm_struct *mm,
 		__insert_vm_struct(mm, mpnt);
 	}
 
-	__insert_vm_struct(mm, area);
+	__insert_vm_struct(mm, area); // 将产生的空洞放回
 	spin_unlock(&mm->page_table_lock);
 	unlock_vma_mappings(area);
 	return extra;
@@ -617,7 +617,7 @@ static struct vm_area_struct * unmap_fixup(struct mm_struct *mm,
  * we just free'd - but there's no telling how much before.
  */
 static void free_pgtables(struct mm_struct * mm, struct vm_area_struct *prev,
-	unsigned long start, unsigned long end)
+	unsigned long start, unsigned long end) // 释放 page table中空闲的页
 {
 	unsigned long first = start & PGDIR_MASK;
 	unsigned long last = end + PGDIR_SIZE - 1;
@@ -656,7 +656,7 @@ no_mmaps:
 	start_index = pgd_index(first);
 	end_index = pgd_index(last);
 	if (end_index > start_index) {
-		clear_page_tables(mm, start_index, end_index - start_index);
+		clear_page_tables(mm, start_index, end_index - start_index); // 啊哈？每 1024 * 1024页触发一次page table的释放？
 		flush_tlb_pgtables(mm, first & PGDIR_MASK, last & PGDIR_MASK);
 	}
 }
@@ -666,9 +666,9 @@ no_mmaps:
  * work.  This now handles partial unmappings.
  * Jeremy Fitzhardine <jeremy@sw.oz.au>
  */
-int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len)
+int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len) // addr: 要释放的内存的起点 len: 要释放内存的长度
 {
-	struct vm_area_struct *mpnt, *prev, **npp, *free, *extra;
+	struct vm_area_struct *mpnt, *prev, **npp, *free, *extra; // prev npp是指针的指针
 
 	if ((addr & ~PAGE_MASK) || addr > TASK_SIZE || len > TASK_SIZE-addr)
 		return -EINVAL;
@@ -681,7 +681,7 @@ int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len)
 	 * every area affected in some way (by any overlap) is put
 	 * on the list.  If nothing is put on, nothing is affected.
 	 */
-	mpnt = find_vma_prev(mm, addr, &prev);
+	mpnt = find_vma_prev(mm, addr, &prev); // 找到第一个 vm_start >= addr 的 vm_area_struct
 	if (!mpnt)
 		return 0;
 	/* we have  addr < mpnt->vm_end  */
@@ -691,7 +691,7 @@ int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len)
 
 	/* If we'll make "hole", check the vm areas limit */
 	if ((mpnt->vm_start < addr && mpnt->vm_end > addr+len)
-	    && mm->map_count >= MAX_MAP_COUNT)
+	    && mm->map_count >= MAX_MAP_COUNT) // 有空洞且 vm_area_struct数量已经超过上限
 		return -ENOMEM;
 
 	/*
@@ -702,14 +702,14 @@ int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len)
 	if (!extra)
 		return -ENOMEM;
 
-	npp = (prev ? &prev->vm_next : &mm->mmap);
+	npp = (prev ? &prev->vm_next : &mm->mmap); // prev 和 npp的作用是调整prev->vm_next的值, 因为 vm_area在mm中是基于vm_next串联起来, 如果删除了prev的next mpnt 需要重新调整prev的next的值
 	free = NULL;
 	spin_lock(&mm->page_table_lock);
-	for ( ; mpnt && mpnt->vm_start < addr+len; mpnt = *npp) {
-		*npp = mpnt->vm_next;
-		mpnt->vm_next = free;
+	for ( ; mpnt && mpnt->vm_start < addr+len; mpnt = *npp) { // 从mpnt
+		*npp = mpnt->vm_next; // 调整prev->vm_next的值 将删除的vm_area移除
+		mpnt->vm_next = free; // free是释放的vm_area的链表的首元素
 		free = mpnt;
-		if (mm->mmap_avl)
+		if (mm->mmap_avl) // 调整平衡二叉树
 			avl_remove(mpnt, &mm->mmap_avl);
 	}
 	mm->mmap_cache = NULL;	/* Kill the cache. */
@@ -721,7 +721,7 @@ int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len)
 	 * it will put new vm_area_struct(s) into the address space.
 	 * In that case we have to be careful with VM_DENYWRITE.
 	 */
-	while ((mpnt = free) != NULL) {
+	while ((mpnt = free) != NULL) { // free是待释放的vm_area链表 但是头可能只能释放一半
 		unsigned long st, end, size;
 		struct file *file = NULL;
 
@@ -741,7 +741,7 @@ int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len)
 		mm->map_count--;
 
 		flush_cache_range(mm, st, end);
-		zap_page_range(mm, st, size);
+		zap_page_range(mm, st, size); // 释放虚拟内存对应的物理内存页
 		flush_tlb_range(mm, st, end);
 
 		/*
@@ -756,7 +756,7 @@ int do_munmap(struct mm_struct *mm, unsigned long addr, size_t len)
 	if (extra)
 		kmem_cache_free(vm_area_cachep, extra);
 
-	free_pgtables(mm, prev, addr, addr+len);
+	free_pgtables(mm, prev, addr, addr+len); // 释放对应的page table内存页
 
 	return 0;
 }
@@ -777,7 +777,7 @@ asmlinkage long sys_munmap(unsigned long addr, size_t len)
  *  anonymous maps.  eventually we may be able to do some
  *  brk-specific accounting here.
  */
-unsigned long do_brk(unsigned long addr, unsigned long len)
+unsigned long do_brk(unsigned long addr, unsigned long len) // 内存扩容 从addr开始增长len
 {
 	struct mm_struct * mm = current->mm;
 	struct vm_area_struct * vma;
@@ -800,7 +800,7 @@ unsigned long do_brk(unsigned long addr, unsigned long len)
 	/*
 	 * Clear old maps.  this also does some error checking for us
 	 */
-	retval = do_munmap(mm, addr, len);
+	retval = do_munmap(mm, addr, len); // 扩容前先将 [addr, addr + len] 之间的内存释放
 	if (retval != 0)
 		return retval;
 
@@ -849,13 +849,13 @@ unsigned long do_brk(unsigned long addr, unsigned long len)
 	vma->vm_file = NULL;
 	vma->vm_private_data = NULL;
 
-	insert_vm_struct(mm, vma);
+	insert_vm_struct(mm, vma); // 新增vm_area并插入
 
 out:
 	mm->total_vm += len >> PAGE_SHIFT;
 	if (flags & VM_LOCKED) {
 		mm->locked_vm += len >> PAGE_SHIFT;
-		make_pages_present(addr, addr + len);
+		make_pages_present(addr, addr + len); // 这里尝试绑定物理内存页 应该是COW 如果没有写标识 等实际访问时再绑定具体的物理内存页即可！ 这里的处理存疑？？？
 	}
 	return addr;
 }

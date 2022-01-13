@@ -146,7 +146,7 @@ asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long error_code)
 	vma = find_vma(mm, address);
 	if (!vma)
 		goto bad_area;
-	if (vma->vm_start <= address)
+	if (vma->vm_start <= address) // 说明是堆内存的缺页异常
 		goto good_area;
 	if (!(vma->vm_flags & VM_GROWSDOWN))
 		goto bad_area;

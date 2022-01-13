@@ -144,15 +144,15 @@ static unsigned long offslab_limit;
  * free slabs.
  */
 typedef struct slab_s {
-	struct list_head	list;
-	unsigned long		colouroff;
+	struct list_head	list; // kmem_cache_t中的slab基于此list串联
+	unsigned long		colouroff; // 着色区的size. slab_s对应page的起始地址 + colouroff = s_mem
 	void			*s_mem;		/* including colour offset */
 	unsigned int		inuse;		/* num of objs active in slab */
-	kmem_bufctl_t		free;
+	kmem_bufctl_t		free; // slab当前首个空闲的index 值就是下面的数组的index
 } slab_t;
 
 #define slab_bufctl(slabp) \
-	((kmem_bufctl_t *)(((slab_t*)slabp)+1))
+	((kmem_bufctl_t *)(((slab_t*)slabp)+1)) // 这里的意思是slab_t后紧随一个kmem_bufctl_t数组, 数组元素的index对应待分配对象的index, 值表示下一个空闲的index
 
 /*
  * cpucache_t
@@ -201,7 +201,7 @@ struct kmem_cache_s {
 	size_t			colour;		/* cache colouring range */
 	unsigned int		colour_off;	/* colour offset */
 	unsigned int		colour_next;	/* cache colouring */
-	kmem_cache_t		*slabp_cache;
+	kmem_cache_t		*slabp_cache; // 大对象的kmem_cache_s的slab存储在该kmem_cache_t中 小对象的slab存储在slab管理的内存上
 	unsigned int		growing;
 	unsigned int		dflags;		/* dynamic flags */
 
@@ -319,9 +319,9 @@ static int slab_break_gfp_order = BREAK_GFP_ORDER_LO;
 
 /* Size description struct for general caches. */
 typedef struct cache_sizes {
-	size_t		 cs_size;
-	kmem_cache_t	*cs_cachep;
-	kmem_cache_t	*cs_dmacachep;
+	size_t		 cs_size; // object size
+	kmem_cache_t	*cs_cachep; // 默认的分配器
+	kmem_cache_t	*cs_dmacachep; // dma 分配器
 } cache_sizes_t;
 
 static cache_sizes_t cache_sizes[] = {
@@ -344,10 +344,10 @@ static cache_sizes_t cache_sizes[] = {
 };
 
 /* internal cache of cache description objs */
-static kmem_cache_t cache_cache = {
+static kmem_cache_t cache_cache = { // static 默认的kmem_cache_t，用于初始化cache_sizes时，分配kmem_cache_t对象(解决kmem_cache_t对象本身存储在哪里的鸡生蛋、蛋生鸡问题)
 	slabs:		LIST_HEAD_INIT(cache_cache.slabs),
 	firstnotfull:	&cache_cache.slabs,
-	objsize:	sizeof(kmem_cache_t),
+	objsize:	sizeof(kmem_cache_t), // 用于分配kmem_cache_t对象 因此size就是sizeof(kmeme_cache_t)
 	flags:		SLAB_NO_REAP,
 	spinlock:	SPIN_LOCK_UNLOCKED,
 	colour_off:	L1_CACHE_BYTES,
@@ -383,11 +383,11 @@ static void kmem_cache_estimate (unsigned long gfporder, size_t size,
 	size_t base = 0;
 
 	if (!(flags & CFLGS_OFF_SLAB)) {
-		base = sizeof(slab_t);
-		extra = sizeof(kmem_bufctl_t);
+		base = sizeof(slab_t); // 小对象（小于4K）的slab_t本身也存储在slab缓存的内存上
+		extra = sizeof(kmem_bufctl_t); // kmem_bufctl_t数组紧随slab_t，作为链表表示下一个free元素在keme_bufctl_t数组中的index
 	}
 	i = 0;
-	while (i*size + L1_CACHE_ALIGN(base+i*extra) <= wastage)
+	while (i*size + L1_CACHE_ALIGN(base+i*extra) <= wastage) // i表示可分配对象的数量
 		i++;
 	if (i > 0)
 		i--;
@@ -395,9 +395,9 @@ static void kmem_cache_estimate (unsigned long gfporder, size_t size,
 	if (i > SLAB_LIMIT)
 		i = SLAB_LIMIT;
 
-	*num = i;
+	*num = i; // 可分配对象的数量
 	wastage -= i*size;
-	wastage -= L1_CACHE_ALIGN(base+i*extra);
+	wastage -= L1_CACHE_ALIGN(base+i*extra); // 会浪费的空间
 	*left_over = wastage;
 }
 
@@ -414,8 +414,9 @@ void __init kmem_cache_init(void)
 	if (!cache_cache.num)
 		BUG();
 
-	cache_cache.colour = left_over/cache_cache.colour_off;
-	cache_cache.colour_next = 0;
+	// 注意这里的大slab（objsize大于4K一个内存页、则无需着色和存储slab)
+	cache_cache.colour = left_over/cache_cache.colour_off; // colour_off是L1 cache line一次读取数据的长度。如16表示一次读取16byte字节 这里表示剩余内存可用于创建多少个着色区（即L1 cache line的长度）
+	cache_cache.colour_next = 0; // 如果有多个着色区如3，则依次可选择偏移0、1、2、3、0这样轮回...
 }
 
 
@@ -690,7 +691,7 @@ kmem_cache_create (const char *name, size_t size, size_t offset,
 		align = L1_CACHE_BYTES;
 
 	/* Determine if the slab management is 'on' or 'off' slab. */
-	if (size >= (PAGE_SIZE>>3))
+	if (size >= (PAGE_SIZE>>3)) // (4 * 1024) >> 3 = 512 表示objsize >= 512时slab_t单独分配
 		/*
 		 * Size is large, assume best to place the slab management obj
 		 * off-slab (should allow better packing of objs).
@@ -748,7 +749,7 @@ next:
 		cachep = NULL;
 		goto opps;
 	}
-	slab_size = L1_CACHE_ALIGN(cachep->num*sizeof(kmem_bufctl_t)+sizeof(slab_t));
+	slab_size = L1_CACHE_ALIGN(cachep->num*sizeof(kmem_bufctl_t)+sizeof(slab_t)); // slab_t后紧随一个kmem_bufctl_t数组
 
 	/*
 	 * If the slab has been placed off-slab, and we have enough space then
@@ -781,9 +782,9 @@ next:
 	cachep->firstnotfull = &cachep->slabs;
 
 	if (flags & CFLGS_OFF_SLAB)
-		cachep->slabp_cache = kmem_find_general_cachep(slab_size,0);
-	cachep->ctor = ctor;
-	cachep->dtor = dtor;
+		cachep->slabp_cache = kmem_find_general_cachep(slab_size,0); // 根据slab_size确定要用哪个kmem_cache_t分配slab_t的内存
+	cachep->ctor = ctor; // constructer function
+	cachep->dtor = dtor; // deconstructer function
 	/* Copy name over so we don't have problems with unloaded modules */
 	strcpy(cachep->name, name);
 
@@ -912,12 +913,12 @@ static int __kmem_cache_shrink(kmem_cache_t *cachep)
 		if (p == &cachep->slabs)
 			break;
 
-		slabp = list_entry(cachep->slabs.prev, slab_t, list);
-		if (slabp->inuse)
+		slabp = list_entry(cachep->slabs.prev, slab_t, list); // cachep->slabs.pre mean slab list tail. slab is ring list.
+		if (slabp->inuse) // is inuse. so cachep don't has free slab
 			break;
 
-		list_del(&slabp->list);
-		if (cachep->firstnotfull == &slabp->list)
+		list_del(&slabp->list); // remove from list
+		if (cachep->firstnotfull == &slabp->list) // if firstnotfull is slabp. all(partial and free) released, cachep->slab remain els are full.
 			cachep->firstnotfull = &cachep->slabs;
 
 		spin_unlock_irq(&cachep->spinlock);
@@ -999,23 +1000,23 @@ static inline slab_t * kmem_cache_slabmgmt (kmem_cache_t *cachep,
 {
 	slab_t *slabp;
 	
-	if (OFF_SLAB(cachep)) {
+	if (OFF_SLAB(cachep)) { // 大对象(objsize > (4K >> 3 = 512))
 		/* Slab management obj is off-slab. */
-		slabp = kmem_cache_alloc(cachep->slabp_cache, local_flags);
+		slabp = kmem_cache_alloc(cachep->slabp_cache, local_flags); // 从sizeof(slab_t)对应的kmem_cache中给slab分配内存
 		if (!slabp)
 			return NULL;
-	} else {
+	} else { // 小对象(objsize < 4K)
 		/* FIXME: change to
 			slabp = objp
 		 * if you enable OPTIMIZE
 		 */
-		slabp = objp+colour_off;
+		slabp = objp+colour_off; // slab存储在最后一个着色区的起始地址
 		colour_off += L1_CACHE_ALIGN(cachep->num *
 				sizeof(kmem_bufctl_t) + sizeof(slab_t));
 	}
 	slabp->inuse = 0;
-	slabp->colouroff = colour_off;
-	slabp->s_mem = objp+colour_off;
+	slabp->colouroff = colour_off; // 重新计算着色区 slabp起始地址 + 一个 L1 cache line
+	slabp->s_mem = objp+colour_off; // 设置可用内存的起始地址
 
 	return slabp;
 }
@@ -1026,7 +1027,7 @@ static inline void kmem_cache_init_objs (kmem_cache_t * cachep,
 	int i;
 
 	for (i = 0; i < cachep->num; i++) {
-		void* objp = slabp->s_mem+cachep->objsize*i;
+		void* objp = slabp->s_mem+cachep->objsize*i; // 获取第i个对象的起始地址
 #if DEBUG
 		if (cachep->flags & SLAB_RED_ZONE) {
 			*((unsigned long*)(objp)) = RED_MAGIC1;
@@ -1057,9 +1058,9 @@ static inline void kmem_cache_init_objs (kmem_cache_t * cachep,
 				BUG();
 		}
 #endif
-		slab_bufctl(slabp)[i] = i+1;
+		slab_bufctl(slabp)[i] = i+1; // 用链表的方式将空闲内存串联
 	}
-	slab_bufctl(slabp)[i-1] = BUFCTL_END;
+	slab_bufctl(slabp)[i-1] = BUFCTL_END; // 链表的末尾元素指向BUFCTL_END
 	slabp->free = 0;
 }
 
@@ -1107,11 +1108,11 @@ static int kmem_cache_grow (kmem_cache_t * cachep, int flags)
 	spin_lock_irqsave(&cachep->spinlock, save_flags);
 
 	/* Get colour for the slab, and cal the next value. */
-	offset = cachep->colour_next;
+	offset = cachep->colour_next; // 着色区 着色的index * 一次着色的长度
 	cachep->colour_next++;
 	if (cachep->colour_next >= cachep->colour)
 		cachep->colour_next = 0;
-	offset *= cachep->colour_off;
+	offset *= cachep->colour_off; // colour_off 单次着色长度  offset 待着色的index
 	cachep->dflags |= DFLGS_GROWN;
 
 	cachep->growing++;
@@ -1127,20 +1128,20 @@ static int kmem_cache_grow (kmem_cache_t * cachep, int flags)
 	 */
 
 	/* Get mem for the objs. */
-	if (!(objp = kmem_getpages(cachep, flags)))
+	if (!(objp = kmem_getpages(cachep, flags))) // 从页管理系统获取空闲页
 		goto failed;
 
 	/* Get slab management. */
-	if (!(slabp = kmem_cache_slabmgmt(cachep, objp, offset, local_flags)))
+	if (!(slabp = kmem_cache_slabmgmt(cachep, objp, offset, local_flags))) // 分配slab、小对象的分配在objp中、大对象的从sizeof(slab_t)对应的cachep中分配
 		goto opps1;
 
 	/* Nasty!!!!!! I hope this is OK. */
 	i = 1 << cachep->gfporder;
-	page = virt_to_page(objp);
+	page = virt_to_page(objp); // 根据虚拟地址定位到对应的page、这里是物理地址可直接/4K
 	do {
-		SET_PAGE_CACHE(page, cachep);
-		SET_PAGE_SLAB(page, slabp);
-		PageSetSlab(page);
+		SET_PAGE_CACHE(page, cachep); // page->list.next指向cachep
+		SET_PAGE_SLAB(page, slabp); // page->list.pre指向slabp
+		PageSetSlab(page); // page被slab使用(增加PG_slab标识)
 		page++;
 	} while (--i);
 
@@ -1150,8 +1151,8 @@ static int kmem_cache_grow (kmem_cache_t * cachep, int flags)
 	cachep->growing--;
 
 	/* Make slab active. */
-	list_add_tail(&slabp->list,&cachep->slabs);
-	if (cachep->firstnotfull == &cachep->slabs)
+	list_add_tail(&slabp->list,&cachep->slabs); // free的默认加到末尾
+	if (cachep->firstnotfull == &cachep->slabs) // 将新创建的slabp加到firstnotfull的头
 		cachep->firstnotfull = &slabp->list;
 	STATS_INC_GROWN(cachep);
 	cachep->failures = 0;
@@ -1219,10 +1220,10 @@ static inline void * kmem_cache_alloc_one_tail (kmem_cache_t *cachep,
 
 	/* get obj pointer */
 	slabp->inuse++;
-	objp = slabp->s_mem + slabp->free*cachep->objsize;
-	slabp->free=slab_bufctl(slabp)[slabp->free];
+	objp = slabp->s_mem + slabp->free*cachep->objsize; // 找到slab中首个free的地址
+	slabp->free=slab_bufctl(slabp)[slabp->free]; // 将已分配的slabp->free跳过、指向链表中的下一个
 
-	if (slabp->free == BUFCTL_END)
+	if (slabp->free == BUFCTL_END) // 如果分配完了
 		/* slab now full: move to next slab for next alloc */
 		cachep->firstnotfull = slabp->list.next;
 #if DEBUG
@@ -1255,11 +1256,11 @@ static inline void * kmem_cache_alloc_one_tail (kmem_cache_t *cachep,
 	/* Get slab alloc is to come from. */			\
 	{							\
 		struct list_head* p = cachep->firstnotfull;	\
-		if (p == &cachep->slabs)			\
+		if (p == &cachep->slabs)			\  // 如果slab中无空闲, firstnotfull == cachep->slabs
 			goto alloc_new_slab;			\
 		slabp = list_entry(p,slab_t, list);	\
 	}							\
-	kmem_cache_alloc_one_tail(cachep, slabp);		\
+	kmem_cache_alloc_one_tail(cachep, slabp);		\  // 从slabp中分配一个空闲的对象
 })
 
 #ifdef CONFIG_SMP
@@ -1296,7 +1297,7 @@ static inline void * __kmem_cache_alloc (kmem_cache_t *cachep, int flags)
 	kmem_cache_alloc_head(cachep, flags);
 try_again:
 	local_irq_save(save_flags);
-#ifdef CONFIG_SMP
+#ifdef CONFIG_SMP // SMP 对称处理器架构
 	{
 		cpucache_t *cc = cc_data(cachep);
 
@@ -1317,7 +1318,7 @@ try_again:
 		}
 	}
 #else
-	objp = kmem_cache_alloc_one(cachep);
+	objp = kmem_cache_alloc_one(cachep); // 非对称处理器架构
 #endif
 	local_irq_restore(save_flags);
 	return objp;
@@ -1375,7 +1376,7 @@ static inline void kmem_cache_free_one(kmem_cache_t *cachep, void *objp)
 		slabp = (void*)((unsigned long)objp&(~(PAGE_SIZE-1)));
 	 else
 	 */
-	slabp = GET_PAGE_SLAB(virt_to_page(objp));
+	slabp = GET_PAGE_SLAB(virt_to_page(objp)); // slabp bind kmem_cache_grow func
 
 #if DEBUG
 	if (cachep->flags & SLAB_DEBUG_INITIAL)
@@ -1401,17 +1402,17 @@ static inline void kmem_cache_free_one(kmem_cache_t *cachep, void *objp)
 		return;
 #endif
 	{
-		unsigned int objnr = (objp-slabp->s_mem)/cachep->objsize;
+		unsigned int objnr = (objp-slabp->s_mem)/cachep->objsize; // cal obj's index
 
-		slab_bufctl(slabp)[objnr] = slabp->free;
+		slab_bufctl(slabp)[objnr] = slabp->free; // insert free list
 		slabp->free = objnr;
 	}
 	STATS_DEC_ACTIVE(cachep);
 	
 	/* fixup slab chain */
-	if (slabp->inuse-- == cachep->num)
+	if (slabp->inuse-- == cachep->num) // full to partial
 		goto moveslab_partial;
-	if (!slabp->inuse)
+	if (!slabp->inuse) // partial to free
 		goto moveslab_free;
 	return;
 
@@ -1421,13 +1422,13 @@ moveslab_partial:
 	 * slabp: there are no partial slabs in this case
 	 */
 	{
-		struct list_head *t = cachep->firstnotfull;
+		struct list_head *t = cachep->firstnotfull; // tmp. old firstnotfull
 
-		cachep->firstnotfull = &slabp->list;
-		if (slabp->list.next == t)
+		cachep->firstnotfull = &slabp->list; // new firstnotfull
+		if (slabp->list.next == t) // new firstnotfull's next is old firstnotfull. so do nothing
 			return;
-		list_del(&slabp->list);
-		list_add_tail(&slabp->list, t);
+		list_del(&slabp->list); // new firstnotfull remove from list
+		list_add_tail(&slabp->list, t); // insert into new firstnotfull before old firstnotfull
 		return;
 	}
 moveslab_free:
@@ -1437,11 +1438,11 @@ moveslab_free:
 	 * FIXME: optimize
 	 */
 	{
-		struct list_head *t = cachep->firstnotfull->prev;
+		struct list_head *t = cachep->firstnotfull->prev; // firstnotfull's pre
 
-		list_del(&slabp->list);
-		list_add_tail(&slabp->list, &cachep->slabs);
-		if (cachep->firstnotfull == &slabp->list)
+		list_del(&slabp->list); // remove from list
+		list_add_tail(&slabp->list, &cachep->slabs); // insert into slabp before cachep->slabs. also mean at the tail of whole slabs list
+		if (cachep->firstnotfull == &slabp->list) // adjust firstnotfull if slab is firstnotfull
 			cachep->firstnotfull = t->next;
 		return;
 	}
@@ -1533,7 +1534,7 @@ void * kmalloc (size_t size, int flags)
 {
 	cache_sizes_t *csizep = cache_sizes;
 
-	for (; csizep->cs_size; csizep++) {
+	for (; csizep->cs_size; csizep++) { // 从cache_sizes中找第一个满足条件的（csizep->cs_size >= size)
 		if (size > csizep->cs_size)
 			continue;
 		return __kmem_cache_alloc(flags & GFP_DMA ?
@@ -1581,7 +1582,7 @@ void kfree (const void *objp)
 		return;
 	local_irq_save(flags);
 	CHECK_PAGE(virt_to_page(objp));
-	c = GET_PAGE_CACHE(virt_to_page(objp));
+	c = GET_PAGE_CACHE(virt_to_page(objp)); // 在kmem_cache_grow中、新增的slab时、会把slab_t, kmem_cache_t绑定在page的list前后
 	__kmem_cache_free(c, (void*)objp);
 	local_irq_restore(flags);
 }

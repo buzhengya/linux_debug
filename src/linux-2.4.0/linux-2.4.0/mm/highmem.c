@@ -34,7 +34,7 @@ static int pkmap_count[LAST_PKMAP];
 static unsigned int last_pkmap_nr;
 static spinlock_t kmap_lock = SPIN_LOCK_UNLOCKED;
 
-pte_t * pkmap_page_table;
+pte_t * pkmap_page_table; // 页表项数组、init时通常设置size为512或1024
 
 static DECLARE_WAIT_QUEUE_HEAD(pkmap_map_wait);
 
@@ -65,6 +65,7 @@ static void flush_all_zero_pkmaps(void)
 	flush_tlb_all();
 }
 
+// 从pkmap_count数组中找一个空闲的pte 存入pkmap_page_table数组中
 static inline unsigned long map_new_virtual(struct page *page)
 {
 	unsigned long vaddr;
@@ -79,7 +80,7 @@ start:
 			flush_all_zero_pkmaps();
 			count = LAST_PKMAP;
 		}
-		if (!pkmap_count[last_pkmap_nr])
+		if (!pkmap_count[last_pkmap_nr]) // find first not use entry in pkmap_count array
 			break;	/* Found a usable entry */
 		if (--count)
 			continue;
@@ -127,8 +128,8 @@ void *kmap_high(struct page *page)
 	spin_lock(&kmap_lock);
 	vaddr = (unsigned long) page->virtual;
 	if (!vaddr)
-		vaddr = map_new_virtual(page);
-	pkmap_count[PKMAP_NR(vaddr)]++;
+		vaddr = map_new_virtual(page); // save page into pkmap_page_table and return it's addr
+	pkmap_count[PKMAP_NR(vaddr)]++; // it has increased in map_new_virtula
 	if (pkmap_count[PKMAP_NR(vaddr)] < 2)
 		BUG();
 	spin_unlock(&kmap_lock);
@@ -144,13 +145,13 @@ void kunmap_high(struct page *page)
 	vaddr = (unsigned long) page->virtual;
 	if (!vaddr)
 		BUG();
-	nr = PKMAP_NR(vaddr);
+	nr = PKMAP_NR(vaddr); // cal vaddr's index
 
 	/*
 	 * A count must never go down to zero
 	 * without a TLB flush!
 	 */
-	switch (--pkmap_count[nr]) {
+	switch (--pkmap_count[nr]) { // pkmap_count[nr] is 2. now become 1. after TLB flush, it will become 0 and release pkmap_page_table
 	case 0:
 		BUG();
 	case 1:

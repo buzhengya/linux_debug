@@ -67,7 +67,7 @@ static inline void copy_cow_page(struct page * from, struct page * to, unsigned 
 	copy_user_highpage(to, from, address);
 }
 
-mem_map_t * mem_map;
+mem_map_t * mem_map; // 全局的page数组. 如果不初始化、则从0开始。如果初始化（如NUMA架构、则从PAGE_OFFSET开始）
 
 /*
  * Note: this doesn't free the actual pages themselves. That
@@ -261,7 +261,7 @@ nomem:
  */
 static inline int free_pte(pte_t pte)
 {
-	if (pte_present(pte)) {
+	if (pte_present(pte)) { // pte对应的物理页在内存中
 		struct page *page = pte_page(pte);
 		if ((!VALID_PAGE(page)) || PageReserved(page))
 			return 0;
@@ -271,10 +271,10 @@ static inline int free_pte(pte_t pte)
 		 */
 		if (pte_dirty(pte) && page->mapping)
 			set_page_dirty(page);
-		free_page_and_swap_cache(page);
+		free_page_and_swap_cache(page); // 释放对应的物理内存页和swap cache
 		return 1;
 	}
-	swap_free(pte_to_swp_entry(pte));
+	swap_free(pte_to_swp_entry(pte)); // 如果在swap中有缓存 释放swap中的缓存
 	return 0;
 }
 
@@ -291,7 +291,7 @@ static inline int zap_pte_range(struct mm_struct *mm, pmd_t * pmd, unsigned long
 	pte_t * pte;
 	int freed;
 
-	if (pmd_none(*pmd))
+	if (pmd_none(*pmd)) // pmd is illegal. do without release pmd
 		return 0;
 	if (pmd_bad(*pmd)) {
 		pmd_ERROR(*pmd);
@@ -308,7 +308,7 @@ static inline int zap_pte_range(struct mm_struct *mm, pmd_t * pmd, unsigned long
 		pte_t page;
 		if (!size)
 			break;
-		page = ptep_get_and_clear(pte);
+		page = ptep_get_and_clear(pte); // 遍历所有pmd指向的pte 然后释放对应的内存页
 		pte++;
 		size--;
 		if (pte_none(page))
@@ -324,14 +324,14 @@ static inline int zap_pmd_range(struct mm_struct *mm, pgd_t * dir, unsigned long
 	unsigned long end;
 	int freed;
 
-	if (pgd_none(*dir))
+	if (pgd_none(*dir)) // pgd is null? do without release
 		return 0;
 	if (pgd_bad(*dir)) {
 		pgd_ERROR(*dir);
 		pgd_clear(dir);
 		return 0;
 	}
-	pmd = pmd_offset(dir, address);
+	pmd = pmd_offset(dir, address); // pmd is start address
 	address &= ~PGDIR_MASK;
 	end = address + size;
 	if (end > PGDIR_SIZE)
@@ -348,10 +348,10 @@ static inline int zap_pmd_range(struct mm_struct *mm, pgd_t * dir, unsigned long
 /*
  * remove user pages in a given range.
  */
-void zap_page_range(struct mm_struct *mm, unsigned long address, unsigned long size)
+void zap_page_range(struct mm_struct *mm, unsigned long address, unsigned long size) // 因为释放了虚拟内存，因此如果虚拟内存对应了物理内存页，需同时释放对应的物理内存页...
 {
 	pgd_t * dir;
-	unsigned long end = address + size;
+	unsigned long end = address + size; // 要释放内存的终点
 	int freed = 0;
 
 	dir = pgd_offset(mm, address);
@@ -377,7 +377,7 @@ void zap_page_range(struct mm_struct *mm, unsigned long address, unsigned long s
 	 * Notice that rss is an unsigned long.
 	 */
 	if (mm->rss > freed)
-		mm->rss -= freed;
+		mm->rss -= freed; // 调整进程的rss值
 	else
 		mm->rss = 0;
 }
@@ -1089,7 +1089,7 @@ static int do_anonymous_page(struct mm_struct * mm, struct vm_area_struct * vma,
  * This is called with the MM semaphore held.
  */
 static int do_no_page(struct mm_struct * mm, struct vm_area_struct * vma,
-	unsigned long address, int write_access, pte_t *page_table)
+	unsigned long address, int write_access, pte_t *page_table) // 分配新的page
 {
 	struct page * new_page;
 	pte_t entry;
@@ -1102,7 +1102,7 @@ static int do_no_page(struct mm_struct * mm, struct vm_area_struct * vma,
 	 * to copy, not share the page even if sharing is possible.  It's
 	 * essentially an early COW detection.
 	 */
-	new_page = vma->vm_ops->nopage(vma, address & PAGE_MASK, (vma->vm_flags & VM_SHARED)?0:write_access);
+	new_page = vma->vm_ops->nopage(vma, address & PAGE_MASK, (vma->vm_flags & VM_SHARED)?0:write_access); // 分配空闲的物理内存页
 	if (new_page == NULL)	/* no page was available -- SIGBUS */
 		return 0;
 	if (new_page == NOPAGE_OOM)
@@ -1162,7 +1162,7 @@ static inline int handle_pte_fault(struct mm_struct *mm,
 	 */
 	spin_lock(&mm->page_table_lock);
 	entry = *pte;
-	if (!pte_present(entry)) {
+	if (!pte_present(entry)) { // pte是否映射内存且在物理内存中
 		/*
 		 * If it truly wasn't present, we know that kswapd
 		 * and the PTE updates will not touch it later. So

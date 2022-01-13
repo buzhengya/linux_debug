@@ -61,7 +61,7 @@ struct list_head inactive_dirty_list;
  */
 
 static void FASTCALL(__free_pages_ok (struct page *page, unsigned long order));
-static void __free_pages_ok (struct page *page, unsigned long order)
+static void __free_pages_ok (struct page *page, unsigned long order) // 2^order represent page size.
 {
 	unsigned long index, page_idx, mask, flags;
 	free_area_t *area;
@@ -92,14 +92,14 @@ static void __free_pages_ok (struct page *page, unsigned long order)
 	
 	zone = page->zone;
 
-	mask = (~0UL) << order;
-	base = mem_map + zone->offset;
-	page_idx = page - base;
+	mask = (~0UL) << order; // mask是个负数 等于 -(1 << order)
+	base = mem_map + zone->offset; // mem_map is array. zone->offset represent this zone's first page in mem_map array index
+	page_idx = page - base; // cal page idx in zone
 	if (page_idx & ~mask)
 		BUG();
 	index = page_idx >> (1 + order);
 
-	area = zone->free_area + order;
+	area = zone->free_area + order; // find free_area by order
 
 	spin_lock_irqsave(&zone->lock, flags);
 
@@ -110,7 +110,7 @@ static void __free_pages_ok (struct page *page, unsigned long order)
 
 		if (area >= zone->free_area + MAX_ORDER)
 			BUG();
-		if (!test_and_change_bit(index, area->map))
+		if (!test_and_change_bit(index, area->map)) // check buddy is free
 			/*
 			 * the buddy page is still allocated.
 			 */
@@ -118,7 +118,7 @@ static void __free_pages_ok (struct page *page, unsigned long order)
 		/*
 		 * Move the buddy up one level.
 		 */
-		buddy1 = base + (page_idx ^ -mask);
+		buddy1 = base + (page_idx ^ -mask); // base + page_idx的伙伴 将相邻的伙伴进行合并 
 		buddy2 = base + page_idx;
 		if (BAD_RANGE(zone,buddy1))
 			BUG();
@@ -147,12 +147,13 @@ static void __free_pages_ok (struct page *page, unsigned long order)
 #define MARK_USED(index, order, area) \
 	change_bit((index) >> (1+(order)), (area)->map)
 
+// 当伙伴页面分配指定的free_area无page时，需从更大的free_area中分配并把打散的放入到对应的free_area链表中。详细见rmqueue函数
 static inline struct page * expand (zone_t *zone, struct page *page,
 	 unsigned long index, int low, int high, free_area_t * area)
 {
 	unsigned long size = 1 << high;
 
-	while (high > low) {
+	while (high > low) { // 逐级将大内存分配下去
 		if (BAD_RANGE(zone,page))
 			BUG();
 		area--;
@@ -168,6 +169,7 @@ static inline struct page * expand (zone_t *zone, struct page *page,
 	return page;
 }
 
+// alloc page from zone. size is (1 << order)
 static FASTCALL(struct page * rmqueue(zone_t *zone, unsigned long order));
 static struct page * rmqueue(zone_t *zone, unsigned long order) // order is size order. present index in array.
 {
@@ -182,16 +184,16 @@ static struct page * rmqueue(zone_t *zone, unsigned long order) // order is size
 		head = &area->free_list;
 		curr = memlist_next(head);
 
-		if (curr != head) {
+		if (curr != head) { // list not null
 			unsigned int index;
 
 			page = memlist_entry(curr, struct page, list);
 			if (BAD_RANGE(zone,page))
 				BUG();
 			memlist_del(curr); // release has alloced mem page...
-			index = (page - mem_map) - zone->offset;
-			MARK_USED(index, curr_order, area);
-			zone->free_pages -= 1 << order;
+			index = (page - mem_map) - zone->offset; // pgae index in zone.
+			MARK_USED(index, curr_order, area); // modify area->map bit. mark page state
+			zone->free_pages -= 1 << order; // update free pages num
 
 			page = expand(zone, page, index, order, curr_order, area);
 			spin_unlock_irqrestore(&zone->lock, flags);
@@ -253,7 +255,7 @@ static struct page * __alloc_pages_limit(zonelist_t *zonelist,
 			struct page *page = NULL;
 			/* If possible, reclaim a page directly. */
 			if (direct_reclaim && z->free_pages < z->pages_min + 8)
-				page = reclaim_page(z);
+				page = reclaim_page(z); // 从数据已经swap到磁盘的页面中找空闲页
 			/* If that fails, fall back to rmqueue. */
 			if (!page)
 				page = rmqueue(z, order);
@@ -270,7 +272,7 @@ static struct page * __alloc_pages_limit(zonelist_t *zonelist,
 /*
  * This is the 'heart' of the zoned buddy allocator:
  */
-struct page * __alloc_pages(zonelist_t *zonelist, unsigned long order)
+struct page * __alloc_pages(zonelist_t *zonelist, unsigned long order) // rmqueue的封装
 {
 	zone_t **zone;
 	int direct_reclaim = 0;
@@ -709,7 +711,7 @@ static inline void build_zonelists(pg_data_t *pgdat)
 {
 	int i, j, k;
 
-	for (i = 0; i < NR_GFPINDEX; i++) {
+	for (i = 0; i < NR_GFPINDEX; i++) { // NR_GFPINDEX is 4.
 		zonelist_t *zonelist;
 		zone_t *zone;
 
@@ -730,7 +732,7 @@ static inline void build_zonelists(pg_data_t *pgdat)
 			/*
 			 * fallthrough:
 			 */
-			case ZONE_HIGHMEM:
+			case ZONE_HIGHMEM: // 2 zonelist = pgdat->node_zonelists + 2. so fallback is self?
 				zone = pgdat->node_zones + ZONE_HIGHMEM;
 				if (zone->size) {
 #ifndef CONFIG_HIGHMEM
@@ -738,16 +740,16 @@ static inline void build_zonelists(pg_data_t *pgdat)
 #endif
 					zonelist->zones[j++] = zone;
 				}
-			case ZONE_NORMAL:
+			case ZONE_NORMAL: // 1 zonelist = pgdat->node_zonelists + 1. so fallback is self?
 				zone = pgdat->node_zones + ZONE_NORMAL;
 				if (zone->size)
 					zonelist->zones[j++] = zone;
-			case ZONE_DMA:
+			case ZONE_DMA: // 0 zonelist = pgdat->node_zonelists + 0. so fallback is self?
 				zone = pgdat->node_zones + ZONE_DMA;
 				if (zone->size)
 					zonelist->zones[j++] = zone;
 		}
-		zonelist->zones[j++] = NULL;
+		zonelist->zones[j++] = NULL; // tail is null
 	} 
 }
 
@@ -775,7 +777,7 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 		totalpages += size;
 	}
 	realtotalpages = totalpages;
-	if (zholes_size)
+	if (zholes_size) // hole 空洞？
 		for (i = 0; i < MAX_NR_ZONES; i++)
 			realtotalpages -= zholes_size[i];
 			
@@ -792,12 +794,12 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 	 * boundary, so that MAP_NR works.
 	 */
 	map_size = (totalpages + 1)*sizeof(struct page);
-	if (lmem_map == (struct page *)0) {
+	if (lmem_map == (struct page *)0) { // alloc lmem_map array for page array.
 		lmem_map = (struct page *) alloc_bootmem_node(pgdat, map_size);
 		lmem_map = (struct page *)(PAGE_OFFSET + 
 			MAP_ALIGN((unsigned long)lmem_map - PAGE_OFFSET));
 	}
-	*gmap = pgdat->node_mem_map = lmem_map;
+	*gmap = pgdat->node_mem_map = lmem_map; // init padat
 	pgdat->node_size = totalpages;
 	pgdat->node_start_paddr = zone_start_paddr;
 	pgdat->node_start_mapnr = (lmem_map - mem_map);
@@ -815,7 +817,7 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 	}
 
 	offset = lmem_map - mem_map;	
-	for (j = 0; j < MAX_NR_ZONES; j++) {
+	for (j = 0; j < MAX_NR_ZONES; j++) { // init three zone. DMA NORMAL HIGHMEM
 		zone_t *zone = pgdat->node_zones + j;
 		unsigned long mask;
 		unsigned long size, realsize;
@@ -891,7 +893,7 @@ void __init free_area_init_core(int nid, pg_data_t *pgdat, struct page **gmap,
 	build_zonelists(pgdat);
 }
 
-void __init free_area_init(unsigned long *zones_size)
+void __init free_area_init(unsigned long *zones_size) // uma arch. node is one. so pg_data_t is one.
 {
 	free_area_init_core(0, &contig_page_data, &mem_map, zones_size, 0, 0, 0);
 }

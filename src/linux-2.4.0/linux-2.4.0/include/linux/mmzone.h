@@ -77,20 +77,20 @@ typedef struct zonelist_struct {
 
 struct bootmem_data;
 typedef struct pglist_data {
-	zone_t node_zones[MAX_NR_ZONES];
-	zonelist_t node_zonelists[NR_GFPINDEX];
-	struct page *node_mem_map;
-	unsigned long *valid_addr_bitmap;
+	zone_t node_zones[MAX_NR_ZONES]; // three zones. DMA NORMAL and HIGHMEM
+	zonelist_t node_zonelists[NR_GFPINDEX]; // backup zones? when node's local memory is not enough. select other zone from here?
+	struct page *node_mem_map; // first page in this node. also in mem_map array
+	unsigned long *valid_addr_bitmap; // no memory exists
 	struct bootmem_data *bdata;
-	unsigned long node_start_paddr;
-	unsigned long node_start_mapnr;
-	unsigned long node_size;
+	unsigned long node_start_paddr; // the starting physial address of the node
+	unsigned long node_start_mapnr; // offset in mem_map array
+	unsigned long node_size; // page num in this node
 	int node_id;
-	struct pglist_data *node_next;
+	struct pglist_data *node_next; // next pglist_data
 } pg_data_t;
 
 extern int numnodes;
-extern pg_data_t *pgdat_list;
+extern pg_data_t *pgdat_list; // pg_data_t is link by list. this is list head. one pgdata_list represent one node in numa arch.
 
 #define memclass(pgzone, tzone)	(((pgzone)->zone_pgdat == (tzone)->zone_pgdat) \
 			&& (((pgzone) - (pgzone)->zone_pgdat->node_zones) <= \

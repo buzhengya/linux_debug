@@ -81,11 +81,11 @@ extern int last_pid;
 
 #include <asm/processor.h>
 
-#define TASK_RUNNING		0
-#define TASK_INTERRUPTIBLE	1
-#define TASK_UNINTERRUPTIBLE	2
-#define TASK_ZOMBIE		4
-#define TASK_STOPPED		8
+#define TASK_RUNNING		0 // 可运行或在运行
+#define TASK_INTERRUPTIBLE	1 // 浅度睡眠 信号可唤醒 sleep_on, wake_up
+#define TASK_UNINTERRUPTIBLE	2 // 深度睡眠 信号不可唤醒 interruptible_sleep_on, wake_up_interruptible
+#define TASK_ZOMBIE		4 // exit但task_struct未删除
+#define TASK_STOPPED		8 // 挂起 用于debug
 
 #define __set_task_state(tsk, state_value)		\
 	do { (tsk)->state = (state_value); } while (0)
@@ -278,7 +278,7 @@ struct task_struct {
 	/*
 	 * offsets of these are hardcoded elsewhere - touch with care
 	 */
-	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
+	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped 对应sched.h中define的状态*/
 	unsigned long flags;	/* per process flags, defined below */
 	int sigpending;
 	mm_segment_t addr_limit;	/* thread address space:

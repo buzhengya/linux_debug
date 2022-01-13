@@ -173,19 +173,19 @@ struct vm_struct * get_vm_area(unsigned long size, unsigned long flags)
 	area = (struct vm_struct *) kmalloc(sizeof(*area), GFP_KERNEL);
 	if (!area)
 		return NULL;
-	size += PAGE_SIZE;
+	size += PAGE_SIZE; // 在vmalloc之间加一页空洞
 	addr = VMALLOC_START;
 	write_lock(&vmlist_lock);
 	for (p = &vmlist; (tmp = *p) ; p = &tmp->next) {
-		if ((size + addr) < addr) {
+		if ((size + addr) < addr) { // 越界
 			write_unlock(&vmlist_lock);
 			kfree(area);
 			return NULL;
 		}
-		if (size + addr < (unsigned long) tmp->addr)
+		if (size + addr < (unsigned long) tmp->addr) // 找到空洞 在tmp后 p之前
 			break;
 		addr = tmp->size + (unsigned long) tmp->addr;
-		if (addr > VMALLOC_END-size) {
+		if (addr > VMALLOC_END-size) { // 无空闲的area
 			write_unlock(&vmlist_lock);
 			kfree(area);
 			return NULL;

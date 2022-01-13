@@ -60,7 +60,7 @@ static inline void *kmap(struct page *page)
 {
 	if (in_interrupt())
 		BUG();
-	if (page < highmem_start_page)
+	if (page < highmem_start_page) // could not true.
 		return page_address(page);
 	return kmap_high(page);
 }
@@ -69,7 +69,7 @@ static inline void kunmap(struct page *page)
 {
 	if (in_interrupt())
 		BUG();
-	if (page < highmem_start_page)
+	if (page < highmem_start_page) // could not true.
 		return;
 	kunmap_high(page);
 }

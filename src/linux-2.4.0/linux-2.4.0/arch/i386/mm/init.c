@@ -339,7 +339,7 @@ static void __init pagetable_init (void)
 		vaddr = i*PGDIR_SIZE;
 		if (end && (vaddr >= end))
 			break;
-#if CONFIG_X86_PAE
+#if CONFIG_X86_PAE // 开启3级页表时 pmd才有效
 		pmd = (pmd_t *) alloc_bootmem_low_pages(PAGE_SIZE);
 		set_pgd(pgd, __pgd(__pa(pmd) + 0x1));
 #else

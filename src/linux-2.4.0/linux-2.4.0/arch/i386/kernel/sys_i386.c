@@ -43,7 +43,7 @@ asmlinkage int sys_pipe(unsigned long * fildes)
 static inline long do_mmap2(
 	unsigned long addr, unsigned long len,
 	unsigned long prot, unsigned long flags,
-	unsigned long fd, unsigned long pgoff)
+	unsigned long fd, unsigned long pgoff) // addr:user指定的起始地址。len:长度。prot: 属性。 flags：标志。fd：文件描述符。pgoff：文件的起始页地址。
 {
 	int error = -EBADF;
 	struct file * file = NULL;

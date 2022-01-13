@@ -144,7 +144,7 @@ typedef struct page {
 	struct page **pprev_hash;
 	struct buffer_head * buffers;
 	void *virtual; /* non-NULL if kmapped */
-	struct zone_struct *zone;
+	struct zone_struct *zone; // page 关联的zone
 } mem_map_t;
 
 #define get_page(p)		atomic_inc(&(p)->count)
@@ -427,7 +427,7 @@ extern unsigned long do_mmap_pgoff(struct file *file, unsigned long addr,
 
 static inline unsigned long do_mmap(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot,
-	unsigned long flag, unsigned long offset)
+	unsigned long flag, unsigned long offset) // file: target file descpriptor. addr
 {
 	unsigned long ret = -EINVAL;
 	if ((offset + PAGE_ALIGN(len)) < offset)
@@ -491,9 +491,9 @@ static inline int expand_stack(struct vm_area_struct * vma, unsigned long addres
 	unsigned long grow;
 
 	address &= PAGE_MASK;
-	grow = (vma->vm_start - address) >> PAGE_SHIFT;
+	grow = (vma->vm_start - address) >> PAGE_SHIFT; // 栈是从高地址向低地址增长
 	if (vma->vm_end - address > current->rlim[RLIMIT_STACK].rlim_cur ||
-	    ((vma->vm_mm->total_vm + grow) << PAGE_SHIFT) > current->rlim[RLIMIT_AS].rlim_cur)
+	    ((vma->vm_mm->total_vm + grow) << PAGE_SHIFT) > current->rlim[RLIMIT_AS].rlim_cur) // 判断栈是否溢出
 		return -ENOMEM;
 	vma->vm_start = address;
 	vma->vm_pgoff -= grow;
