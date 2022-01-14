@@ -436,7 +436,7 @@ void release_segments(struct mm_struct *mm)
 /*
  * Create a kernel thread
  */
-int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
+int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags) // 实际调用的是clone系统调用
 {
 	long retval, d0;
 

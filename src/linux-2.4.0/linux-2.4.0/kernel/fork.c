@@ -32,7 +32,7 @@ int max_threads;
 unsigned long total_forks;	/* Handle normal Linux uptimes. */
 int last_pid;
 
-struct task_struct *pidhash[PIDHASH_SZ];
+struct task_struct *pidhash[PIDHASH_SZ]; // hashtable for pid to task_struct.
 
 void add_wait_queue(wait_queue_head_t *q, wait_queue_t * wait)
 {
@@ -88,26 +88,27 @@ static int get_pid(unsigned long flags)
 		return current->pid;
 
 	spin_lock(&lastpid_lock);
-	if((++last_pid) & 0xffff8000) {
+	if((++last_pid) & 0xffff8000) { // pid is from 300 to 0x8000. if overflow start from 300.
 		last_pid = 300;		/* Skip daemons etc. */
 		goto inside;
 	}
-	if(last_pid >= next_safe) {
+	if(last_pid >= next_safe) { // next_safe是从last_pid开始下一个不可用的pid
 inside:
 		next_safe = PID_MAX;
 		read_lock(&tasklist_lock);
 	repeat:
-		for_each_task(p) {
+		for_each_task(p) { // 从 init_task(num 1 process) 开始遍历
 			if(p->pid == last_pid	||
 			   p->pgrp == last_pid	||
-			   p->session == last_pid) {
-				if(++last_pid >= next_safe) {
+			   p->session == last_pid) { // if last_pid is use by other process. 重新计算last_pid
+				if(++last_pid >= next_safe) { //  如果 last_pid 和 next_safe 碰撞 重新计算next_safe
 					if(last_pid & 0xffff8000)
 						last_pid = 300;
 					next_safe = PID_MAX;
 				}
 				goto repeat;
 			}
+			// 不断缩小next_safe 找到从last_pid开始最小不可用的pid
 			if(p->pid > last_pid && next_safe > p->pid)
 				next_safe = p->pid;
 			if(p->pgrp > last_pid && next_safe > p->pgrp)
@@ -418,7 +419,7 @@ static int copy_files(unsigned long clone_flags, struct task_struct * tsk)
 	if (!oldf)
 		goto out;
 
-	if (clone_flags & CLONE_FILES) {
+	if (clone_flags & CLONE_FILES) { // 带共享标识符时 递增统计数量即可
 		atomic_inc(&oldf->count);
 		goto out;
 	}
@@ -445,14 +446,14 @@ static int copy_files(unsigned long clone_flags, struct task_struct * tsk)
 	if (size > __FD_SETSIZE) {
 		newf->max_fdset = 0;
 		write_lock(&newf->file_lock);
-		error = expand_fdset(newf, size);
+		error = expand_fdset(newf, size); // 暂略
 		write_unlock(&newf->file_lock);
 		if (error)
 			goto out_release;
 	}
 	read_lock(&oldf->file_lock);
 
-	open_files = count_open_files(oldf, size);
+	open_files = count_open_files(oldf, size); // find the last open file.
 
 	/*
 	 * Check whether we need to allocate a larger fd array.
@@ -464,7 +465,7 @@ static int copy_files(unsigned long clone_flags, struct task_struct * tsk)
 		read_unlock(&oldf->file_lock);
 		newf->max_fds = 0;
 		write_lock(&newf->file_lock);
-		error = expand_fd_array(newf, open_files);
+		error = expand_fd_array(newf, open_files); // expand by open files num
 		write_unlock(&newf->file_lock);
 		if (error) 
 			goto out_release;
@@ -561,22 +562,22 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 
 	if (clone_flags & CLONE_PID) {
 		/* This is only allowed from the boot up thread */
-		if (current->pid)
+		if (current->pid) // pid 为0 idle 内核线程
 			return -EPERM;
 	}
 	
 	current->vfork_sem = &sem;
 
-	p = alloc_task_struct();
+	p = alloc_task_struct(); // copy task_struct form current
 	if (!p)
 		goto fork_out;
 
-	*p = *current;
+	*p = *current; // some pointer need deep copy or reset.
 
 	retval = -EAGAIN;
-	if (atomic_read(&p->user->processes) >= p->rlim[RLIMIT_NPROC].rlim_cur)
+	if (atomic_read(&p->user->processes) >= p->rlim[RLIMIT_NPROC].rlim_cur) // user的进程处理量超出
 		goto bad_fork_free;
-	atomic_inc(&p->user->__count);
+	atomic_inc(&p->user->__count); // 统计user的进程数量
 	atomic_inc(&p->user->processes);
 
 	/*
@@ -584,17 +585,17 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 	 * the kernel lock so nr_threads can't
 	 * increase under us (but it may decrease).
 	 */
-	if (nr_threads >= max_threads)
+	if (nr_threads >= max_threads) // 内核线程的限制 超出时报错. 考虑到每个进程都会生成对应的内核线程，clone本身就是创建内核线程
 		goto bad_fork_cleanup_count;
 	
-	get_exec_domain(p->exec_domain);
+	get_exec_domain(p->exec_domain); // 奇怪的函数名 实际行为是将进程执行域依赖的module计数+1
 
 	if (p->binfmt && p->binfmt->module)
-		__MOD_INC_USE_COUNT(p->binfmt->module);
+		__MOD_INC_USE_COUNT(p->binfmt->module); // 将可执行文件依赖的模块引用计数+1
 
 	p->did_exec = 0;
 	p->swappable = 0;
-	p->state = TASK_UNINTERRUPTIBLE;
+	p->state = TASK_UNINTERRUPTIBLE; // 暂不可运行 所以先设置为该状态
 
 	copy_flags(clone_flags, p);
 	p->pid = get_pid(clone_flags);
@@ -608,7 +609,7 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 			p->p_pptr = current;
 	}
 	p->p_cptr = NULL;
-	init_waitqueue_head(&p->wait_chldexit);
+	init_waitqueue_head(&p->wait_chldexit); // 将上面从父进程拷贝的子进程等待队列去除
 	p->vfork_sem = NULL;
 	spin_lock_init(&p->alloc_lock);
 
@@ -636,19 +637,19 @@ int do_fork(unsigned long clone_flags, unsigned long stack_start,
 	}
 #endif
 	p->lock_depth = -1;		/* -1 = no lock */
-	p->start_time = jiffies;
+	p->start_time = jiffies; // 进程启动时间
 
 	retval = -ENOMEM;
 	/* copy all the process information */
-	if (copy_files(clone_flags, p))
+	if (copy_files(clone_flags, p)) // file system copy
 		goto bad_fork_cleanup;
-	if (copy_fs(clone_flags, p))
+	if (copy_fs(clone_flags, p)) // 
 		goto bad_fork_cleanup_files;
-	if (copy_sighand(clone_flags, p))
+	if (copy_sighand(clone_flags, p)) // signal handler
 		goto bad_fork_cleanup_fs;
-	if (copy_mm(clone_flags, p))
+	if (copy_mm(clone_flags, p)) // mm_struct copy
 		goto bad_fork_cleanup_sighand;
-	retval = copy_thread(0, clone_flags, stack_start, stack_size, p, regs);
+	retval = copy_thread(0, clone_flags, stack_start, stack_size, p, regs); // thread copy
 	if (retval)
 		goto bad_fork_cleanup_sighand;
 	p->semundo = NULL;

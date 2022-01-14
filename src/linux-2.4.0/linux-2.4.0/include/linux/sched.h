@@ -279,15 +279,15 @@ struct task_struct {
 	 * offsets of these are hardcoded elsewhere - touch with care
 	 */
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped 对应sched.h中define的状态*/
-	unsigned long flags;	/* per process flags, defined below */
-	int sigpending;
+	unsigned long flags;	/* per process flags, defined below form PF_ALIGNWARN to PF_USEDFPU */
+	int sigpending; // 收到但未处理的信号 说明进程同时只能有一个待处理的信号！！！
 	mm_segment_t addr_limit;	/* thread address space:
 					 	0-0xBFFFFFFF for user-thead
 						0-0xFFFFFFFF for kernel-thread
 					 */
 	struct exec_domain *exec_domain;
-	volatile long need_resched;
-	unsigned long ptrace;
+	volatile long need_resched; // 表示在进入用户空间前还需要进行一次调度
+	unsigned long ptrace; // form PT_PTRACED to PT_TRACESYSGOOD
 
 	int lock_depth;		/* Lock depth */
 
@@ -297,7 +297,7 @@ struct task_struct {
  * the goodness() loop in schedule().
  */
 	long counter;
-	long nice;
+	long nice; // 进程的优先级
 	unsigned long policy;
 	struct mm_struct *mm;
 	int has_cpu, processor;
@@ -313,15 +313,15 @@ struct task_struct {
 	struct mm_struct *active_mm;
 
 /* task state */
-	struct linux_binfmt *binfmt;
+	struct linux_binfmt *binfmt; // 可执行文件格式
 	int exit_code, exit_signal;
 	int pdeath_signal;  /*  The signal sent when the parent dies  */
 	/* ??? */
-	unsigned long personality;
+	unsigned long personality; // 个性化的标志、对应personality.h的属性
 	int dumpable:1;
 	int did_exec:1;
 	pid_t pid;
-	pid_t pgrp;
+	pid_t pgrp; //所属的组
 	pid_t tty_old_pgrp;
 	pid_t session;
 	pid_t tgid;
@@ -332,7 +332,7 @@ struct task_struct {
 	 * older sibling, respectively.  (p->father can be replaced with 
 	 * p->p_pptr->pid)
 	 */
-	struct task_struct *p_opptr, *p_pptr, *p_cptr, *p_ysptr, *p_osptr;
+	struct task_struct *p_opptr, *p_pptr, *p_cptr, *p_ysptr, *p_osptr; // 进程家谱
 	struct list_head thread_group;
 
 	/* PID hash table linkage. */
@@ -347,7 +347,7 @@ struct task_struct {
 	struct timer_list real_timer;
 	struct tms times;
 	unsigned long start_time;
-	long per_cpu_utime[NR_CPUS], per_cpu_stime[NR_CPUS];
+	long per_cpu_utime[NR_CPUS], per_cpu_stime[NR_CPUS]; // 分CPU统计调度时间
 /* mm fault and swap info: this can arguably be seen as either mm-specific or thread-specific */
 	unsigned long min_flt, maj_flt, nswap, cmin_flt, cmaj_flt, cnswap;
 	int swappable:1;
@@ -356,11 +356,11 @@ struct task_struct {
 	gid_t gid,egid,sgid,fsgid;
 	int ngroups;
 	gid_t	groups[NGROUPS];
-	kernel_cap_t   cap_effective, cap_inheritable, cap_permitted;
+	kernel_cap_t   cap_effective, cap_inheritable, cap_permitted; // 权限标识符 对应capable define
 	int keep_capabilities:1;
 	struct user_struct *user;
 /* limits */
-	struct rlimit rlim[RLIM_NLIMITS];
+	struct rlimit rlim[RLIM_NLIMITS]; // 资源限制数组 对应resource.h
 	unsigned short used_math;
 	char comm[16];
 /* file system info */
