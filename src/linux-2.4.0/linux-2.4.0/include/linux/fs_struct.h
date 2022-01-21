@@ -6,8 +6,8 @@ struct fs_struct {
 	atomic_t count;
 	rwlock_t lock;
 	int umask;
-	struct dentry * root, * pwd, * altroot;
-	struct vfsmount * rootmnt, * pwdmnt, * altrootmnt;
+	struct dentry * root, * pwd, * altroot; // 目录项 纪录属性、文件名、访问权限等
+	struct vfsmount * rootmnt, * pwdmnt, * altrootmnt; // dentry对应挂载的文件系统
 };
 
 #define INIT_FS { \

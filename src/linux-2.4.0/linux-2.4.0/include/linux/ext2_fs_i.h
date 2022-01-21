@@ -19,7 +19,7 @@
 /*
  * second extended file system inode data in memory
  */
-struct ext2_inode_info {
+struct ext2_inode_info { // inode 映射到ext2_inode
 	__u32	i_data[15];
 	__u32	i_flags;
 	__u32	i_faddr;

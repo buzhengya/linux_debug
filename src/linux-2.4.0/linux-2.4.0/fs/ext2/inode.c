@@ -123,8 +123,8 @@ static int ext2_alloc_block (struct inode * inode, unsigned long goal, int *err)
 }
 
 typedef struct {
-	u32	*p;
-	u32	key;
+	u32	*p; // 内核中key值的指针
+	u32	key; // 文件的block号(block偏移量)对应在文件系统中的block值
 	struct buffer_head *bh;
 } Indirect;
 
@@ -172,26 +172,26 @@ static inline int verify_chain(Indirect *from, Indirect *to)
 
 static int ext2_block_to_path(struct inode *inode, long i_block, int offsets[4])
 {
-	int ptrs = EXT2_ADDR_PER_BLOCK(inode->i_sb);
-	int ptrs_bits = EXT2_ADDR_PER_BLOCK_BITS(inode->i_sb);
-	const long direct_blocks = EXT2_NDIR_BLOCKS,
+	int ptrs = EXT2_ADDR_PER_BLOCK(inode->i_sb); // block_size(define in super_block) / int_size
+	int ptrs_bits = EXT2_ADDR_PER_BLOCK_BITS(inode->i_sb); // 表示每次Block索引需占用的bit位，如 1024/4 = 256需 8bit
+	const long direct_blocks = EXT2_NDIR_BLOCKS, // 12
 		indirect_blocks = ptrs,
-		double_blocks = (1 << (ptrs_bits * 2));
+		double_blocks = (1 << (ptrs_bits * 2)); // 二级索引的容量
 	int n = 0;
 
 	if (i_block < 0) {
 		ext2_warning (inode->i_sb, "ext2_block_to_path", "block < 0");
-	} else if (i_block < direct_blocks) {
+	} else if (i_block < direct_blocks) { // direct blocks size is 12
 		offsets[n++] = i_block;
-	} else if ( (i_block -= direct_blocks) < indirect_blocks) {
-		offsets[n++] = EXT2_IND_BLOCK;
+	} else if ( (i_block -= direct_blocks) < indirect_blocks) { // 一级索引 13, i_block - 13
+		offsets[n++] = EXT2_IND_BLOCK; //13
 		offsets[n++] = i_block;
-	} else if ((i_block -= indirect_blocks) < double_blocks) {
-		offsets[n++] = EXT2_DIND_BLOCK;
+	} else if ((i_block -= indirect_blocks) < double_blocks) { // 二级索引(16-9bit表示一级索引的偏移 8-1bit表示二级索引的偏移)
+		offsets[n++] = EXT2_DIND_BLOCK; // 14
 		offsets[n++] = i_block >> ptrs_bits;
 		offsets[n++] = i_block & (ptrs - 1);
-	} else if (((i_block -= double_blocks) >> (ptrs_bits * 2)) < ptrs) {
-		offsets[n++] = EXT2_TIND_BLOCK;
+	} else if (((i_block -= double_blocks) >> (ptrs_bits * 2)) < ptrs) { // 三级索引(24-17bit一级 16-9bit二级 8-1bit三级)
+		offsets[n++] = EXT2_TIND_BLOCK; //15
 		offsets[n++] = i_block >> (ptrs_bits * 2);
 		offsets[n++] = (i_block >> ptrs_bits) & (ptrs - 1);
 		offsets[n++] = i_block & (ptrs - 1);
@@ -236,24 +236,24 @@ static inline Indirect *ext2_get_branch(struct inode *inode,
 					Indirect chain[4],
 					int *err)
 {
-	kdev_t dev = inode->i_dev;
-	int size = inode->i_sb->s_blocksize;
+	kdev_t dev = inode->i_dev; // 设备号
+	int size = inode->i_sb->s_blocksize; // 设备号的size
 	Indirect *p = chain;
 	struct buffer_head *bh;
 
 	*err = 0;
 	/* i_data is not going away, no lock needed */
-	add_chain (chain, NULL, inode->u.ext2_i.i_data + *offsets);
+	add_chain (chain, NULL, inode->u.ext2_i.i_data + *offsets); // inode->u.ext2_i.i_data ==> inode的block信息的起始地址 + offset偏移量 得到存放第一个block号的地址
 	if (!p->key)
 		goto no_block;
 	while (--depth) {
-		bh = bread(dev, le32_to_cpu(p->key), size);
+		bh = bread(dev, le32_to_cpu(p->key), size); // block read 
 		if (!bh)
 			goto failure;
 		/* Reader: pointers */
 		if (!verify_chain(chain, p))
 			goto changed;
-		add_chain(++p, bh, (u32*)bh->b_data + *++offsets);
+		add_chain(++p, bh, (u32*)bh->b_data + *++offsets); // 如果block需要多级索引、这里是下一级索引
 		/* Reader: end */
 		if (!p->key)
 			goto no_block;
@@ -518,7 +518,7 @@ static int ext2_get_block(struct inode *inode, long iblock, struct buffer_head *
 
 	lock_kernel();
 reread:
-	partial = ext2_get_branch(inode, depth, offsets, chain, &err);
+	partial = ext2_get_branch(inode, depth, offsets, chain, &err); // 这里只是获得了最终要读取的文件系统的block号
 
 	/* Simplest case - block found, no allocation needed */
 	if (!partial) {
@@ -581,14 +581,14 @@ struct buffer_head * ext2_getblk(struct inode * inode, long block, int create, i
 
 	dummy.b_state = 0;
 	dummy.b_blocknr = -1000;
-	error = ext2_get_block(inode, block, &dummy, create);
+	error = ext2_get_block(inode, block, &dummy, create); // 计算文件映射到文件系统要访问的block号
 	*err = error;
 	if (!error && buffer_mapped(&dummy)) {
 		struct buffer_head *bh;
 		bh = getblk(dummy.b_dev, dummy.b_blocknr, inode->i_sb->s_blocksize);
-		if (buffer_new(&dummy)) {
+		if (buffer_new(&dummy)) { // 如果是新buffer
 			if (!buffer_uptodate(bh))
-				wait_on_buffer(bh);
+				wait_on_buffer(bh); // 等待buffer更新 即让出CPU、等待其它地方加载磁盘数据然后唤醒该线程
 			memset(bh->b_data, 0, inode->i_sb->s_blocksize);
 			mark_buffer_uptodate(bh, 1);
 			mark_buffer_dirty_inode(bh, inode);
@@ -969,22 +969,22 @@ void ext2_read_inode (struct inode * inode)
 	unsigned long offset;
 	struct ext2_group_desc * gdp;
 
-	if ((inode->i_ino != EXT2_ROOT_INO && inode->i_ino != EXT2_ACL_IDX_INO &&
-	     inode->i_ino != EXT2_ACL_DATA_INO &&
-	     inode->i_ino < EXT2_FIRST_INO(inode->i_sb)) ||
-	    inode->i_ino > le32_to_cpu(inode->i_sb->u.ext2_sb.s_es->s_inodes_count)) {
+	if ((inode->i_ino != EXT2_ROOT_INO && inode->i_ino != EXT2_ACL_IDX_INO && // 2,3 is illegal
+	     inode->i_ino != EXT2_ACL_DATA_INO && // 3 is illegal
+	     inode->i_ino < EXT2_FIRST_INO(inode->i_sb)) || // can not less than super block's first block index.
+	    inode->i_ino > le32_to_cpu(inode->i_sb->u.ext2_sb.s_es->s_inodes_count)) { // can not greater than super block's inodes count
 		ext2_error (inode->i_sb, "ext2_read_inode",
 			    "bad inode number: %lu", inode->i_ino);
 		goto bad_inode;
 	}
-	block_group = (inode->i_ino - 1) / EXT2_INODES_PER_GROUP(inode->i_sb);
-	if (block_group >= inode->i_sb->u.ext2_sb.s_groups_count) {
+	block_group = (inode->i_ino - 1) / EXT2_INODES_PER_GROUP(inode->i_sb); // cal ino belong to which group
+	if (block_group >= inode->i_sb->u.ext2_sb.s_groups_count) { // group greater than super block's group count
 		ext2_error (inode->i_sb, "ext2_read_inode",
 			    "group >= groups count");
 		goto bad_inode;
 	}
-	group_desc = block_group >> EXT2_DESC_PER_BLOCK_BITS(inode->i_sb);
-	desc = block_group & (EXT2_DESC_PER_BLOCK(inode->i_sb) - 1);
+	group_desc = block_group >> EXT2_DESC_PER_BLOCK_BITS(inode->i_sb); // 这里应该是假设group desc被分成多个数组存储。这里表示的是计算属于哪个数组
+	desc = block_group & (EXT2_DESC_PER_BLOCK(inode->i_sb) - 1); // 这里表示的是计算属于数组中的哪个元素
 	bh = inode->i_sb->u.ext2_sb.s_group_desc[group_desc];
 	if (!bh) {
 		ext2_error (inode->i_sb, "ext2_read_inode",
@@ -997,17 +997,17 @@ void ext2_read_inode (struct inode * inode)
 	 * Figure out the offset within the block group inode table
 	 */
 	offset = ((inode->i_ino - 1) % EXT2_INODES_PER_GROUP(inode->i_sb)) *
-		EXT2_INODE_SIZE(inode->i_sb);
-	block = le32_to_cpu(gdp[desc].bg_inode_table) +
-		(offset >> EXT2_BLOCK_SIZE_BITS(inode->i_sb));
-	if (!(bh = bread (inode->i_dev, block, inode->i_sb->s_blocksize))) {
+		EXT2_INODE_SIZE(inode->i_sb); // 计算ino对应的inode_table在block group中的offset
+	block = le32_to_cpu(gdp[desc].bg_inode_table) + // ino所属block group中首个存储inode_table的block index
+		(offset >> EXT2_BLOCK_SIZE_BITS(inode->i_sb)); // ino的inode_table中的偏移量
+	if (!(bh = bread (inode->i_dev, block, inode->i_sb->s_blocksize))) { // 不从缓存中读？直接从设备中读取
 		ext2_error (inode->i_sb, "ext2_read_inode",
 			    "unable to read inode block - "
 			    "inode=%lu, block=%lu", inode->i_ino, block);
 		goto bad_inode;
 	}
 	offset &= (EXT2_BLOCK_SIZE(inode->i_sb) - 1);
-	raw_inode = (struct ext2_inode *) (bh->b_data + offset);
+	raw_inode = (struct ext2_inode *) (bh->b_data + offset); // raw_inode需进行转码
 
 	inode->i_mode = le16_to_cpu(raw_inode->i_mode);
 	inode->i_uid = (uid_t)le16_to_cpu(raw_inode->i_uid_low);
@@ -1053,13 +1053,13 @@ void ext2_read_inode (struct inode * inode)
 	 * NOTE! The in-memory inode i_data array is in little-endian order
 	 * even on big-endian machines: we do NOT byteswap the block numbers!
 	 */
-	for (block = 0; block < EXT2_N_BLOCKS; block++)
+	for (block = 0; block < EXT2_N_BLOCKS; block++) // 文件内容存储在具体的block index
 		inode->u.ext2_i.i_data[block] = raw_inode->i_block[block];
 
 	if (inode->i_ino == EXT2_ACL_IDX_INO ||
 	    inode->i_ino == EXT2_ACL_DATA_INO)
 		/* Nothing to do */ ;
-	else if (S_ISREG(inode->i_mode)) {
+	else if (S_ISREG(inode->i_mode)) { // 基于inode mode初始化inode的operations
 		inode->i_op = &ext2_file_inode_operations;
 		inode->i_fop = &ext2_file_operations;
 		inode->i_mapping->a_ops = &ext2_aops;

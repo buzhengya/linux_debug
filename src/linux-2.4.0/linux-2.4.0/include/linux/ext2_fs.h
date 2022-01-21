@@ -147,9 +147,9 @@ struct ext2_acl_entry	/* Access Control List Entry */
  */
 struct ext2_group_desc
 {
-	__u32	bg_block_bitmap;		/* Blocks bitmap block */
-	__u32	bg_inode_bitmap;		/* Inodes bitmap block */
-	__u32	bg_inode_table;		/* Inodes table block */
+	__u32	bg_block_bitmap;		/* first Blocks bitmap block number. one group usually one block */
+	__u32	bg_inode_bitmap;		/* first Inodes bitmap block number. one group usually one block */
+	__u32	bg_inode_table;		/* first Inodes table block number. */
 	__u16	bg_free_blocks_count;	/* Free blocks count */
 	__u16	bg_free_inodes_count;	/* Free inodes count */
 	__u16	bg_used_dirs_count;	/* Directories count */
@@ -214,7 +214,7 @@ struct ext2_group_desc
 /*
  * Structure of an inode on the disk
  */
-struct ext2_inode {
+struct ext2_inode { // Q: inode是如何映射到这个结构体的？？？
 	__u16	i_mode;		/* File mode */
 	__u16	i_uid;		/* Low 16 bits of Owner Uid */
 	__u32	i_size;		/* Size in bytes */
@@ -486,7 +486,7 @@ struct ext2_dir_entry {
  * bigger than 255 chars, it's safe to reclaim the extra byte for the
  * file_type field.
  */
-struct ext2_dir_entry_2 {
+struct ext2_dir_entry_2 { // equal ext2_dir_entry
 	__u32	inode;			/* Inode number */
 	__u16	rec_len;		/* Directory entry length */
 	__u8	name_len;		/* Name length */
@@ -499,10 +499,10 @@ struct ext2_dir_entry_2 {
  * other bits are reserved for now.
  */
 #define EXT2_FT_UNKNOWN		0
-#define EXT2_FT_REG_FILE	1
+#define EXT2_FT_REG_FILE	1 // 常规文件(include /proc)
 #define EXT2_FT_DIR		2
-#define EXT2_FT_CHRDEV		3
-#define EXT2_FT_BLKDEV 		4
+#define EXT2_FT_CHRDEV		3 // 字符设备
+#define EXT2_FT_BLKDEV 		4 // 块设备
 #define EXT2_FT_FIFO		5
 #define EXT2_FT_SOCK		6
 #define EXT2_FT_SYMLINK		7

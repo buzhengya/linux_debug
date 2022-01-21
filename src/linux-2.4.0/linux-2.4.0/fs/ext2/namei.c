@@ -62,7 +62,7 @@ static struct buffer_head * ext2_find_entry (struct inode * dir,
 					     struct ext2_dir_entry_2 ** res_dir)
 {
 	struct super_block * sb;
-	struct buffer_head * bh_use[NAMEI_RA_SIZE];
+	struct buffer_head * bh_use[NAMEI_RA_SIZE]; // size is 8
 	struct buffer_head * bh_read[NAMEI_RA_SIZE];
 	unsigned long offset;
 	int block, toread, i, err;
@@ -80,9 +80,9 @@ static struct buffer_head * ext2_find_entry (struct inode * dir,
 
 		if ((block << EXT2_BLOCK_SIZE_BITS (sb)) >= dir->i_size)
 			break;
-		bh = ext2_getblk (dir, block, 0, &err);
+		bh = ext2_getblk (dir, block, 0, &err); // 这里还是会从缓存中读取、这里暂且不管 理解为从文件系统读取块即可
 		bh_use[block] = bh;
-		if (bh && !buffer_uptodate(bh))
+		if (bh && !buffer_uptodate(bh)) // 新分配的或者与磁盘不一致了 需要从磁盘中读取
 			bh_read[toread++] = bh;
 	}
 
@@ -95,7 +95,7 @@ static struct buffer_head * ext2_find_entry (struct inode * dir,
 			ll_rw_block (READ, toread, bh_read);
 			toread = 0;
 		}
-		bh = bh_use[block % NAMEI_RA_SIZE];
+		bh = bh_use[block % NAMEI_RA_SIZE]; // 可能会超？
 		if (!bh) {
 #if 0
 			ext2_error (sb, "ext2_find_entry",
@@ -114,22 +114,22 @@ static struct buffer_head * ext2_find_entry (struct inode * dir,
 		}
 
 		de = (struct ext2_dir_entry_2 *) bh->b_data;
-		dlimit = bh->b_data + sb->s_blocksize;
+		dlimit = bh->b_data + sb->s_blocksize; // super_block定义了每个block的大小
 		while ((char *) de < dlimit) {
 			/* this code is executed quadratically often */
 			/* do minimal checking `by hand' */
 			int de_len;
 
 			if ((char *) de + namelen <= dlimit &&
-			    ext2_match (namelen, name, de)) {
+			    ext2_match (namelen, name, de)) { // match file name
 				/* found a match -
 				   just to be sure, do a full check */
 				if (!ext2_check_dir_entry("ext2_find_entry",
-							  dir, de, bh, offset))
+							  dir, de, bh, offset)) // ext2文件系统的entry校验
 					goto failure;
 				for (i = 0; i < NAMEI_RA_SIZE; ++i) {
 					if (bh_use[i] != bh)
-						brelse (bh_use[i]);
+						brelse (bh_use[i]); // buffer release. 尝试释放buffer
 				}
 				*res_dir = de;
 				return bh;
@@ -169,17 +169,17 @@ static struct dentry *ext2_lookup(struct inode * dir, struct dentry *dentry)
 	if (dentry->d_name.len > EXT2_NAME_LEN)
 		return ERR_PTR(-ENAMETOOLONG);
 
-	bh = ext2_find_entry (dir, dentry->d_name.name, dentry->d_name.len, &de);
+	bh = ext2_find_entry (dir, dentry->d_name.name, dentry->d_name.len, &de); // 从磁盘中读取dentry的内容、实际是ext2_dir_entry_2数组 这里只是得到了dentry对应的block
 	inode = NULL;
 	if (bh) {
 		unsigned long ino = le32_to_cpu(de->inode);
-		brelse (bh);
-		inode = iget(dir->i_sb, ino);
+		brelse (bh); // bh 引用计数 -1
+		inode = iget(dir->i_sb, ino); // 根据dentry读取对应的inode信息
 
 		if (!inode)
 			return ERR_PTR(-EACCES);
 	}
-	d_add(dentry, inode);
+	d_add(dentry, inode); // 链接 dentry
 	return NULL;
 }
 
@@ -227,10 +227,10 @@ int ext2_add_entry (struct inode * dir, const char * name, int namelen,
 	offset = 0;
 	de = (struct ext2_dir_entry_2 *) bh->b_data;
 	while (1) {
-		if ((char *)de >= sb->s_blocksize + bh->b_data) {
+		if ((char *)de >= sb->s_blocksize + bh->b_data) { // if bh(buffer_head) finish find.
 			brelse (bh);
 			bh = NULL;
-			bh = ext2_bread (dir, offset >> EXT2_BLOCK_SIZE_BITS(sb), 1, &retval);
+			bh = ext2_bread (dir, offset >> EXT2_BLOCK_SIZE_BITS(sb), 1, &retval); // ext2 read block from disk
 			if (!bh)
 				return retval;
 			if (dir->i_size <= offset) {
@@ -258,12 +258,12 @@ int ext2_add_entry (struct inode * dir, const char * name, int namelen,
 			brelse (bh);
 			return -ENOENT;
 		}
-		if (ext2_match (namelen, name, de)) {
+		if (ext2_match (namelen, name, de)) { // if dentry exist...
 				brelse (bh);
 				return -EEXIST;
 		}
-		if ((le32_to_cpu(de->inode) == 0 && le16_to_cpu(de->rec_len) >= rec_len) ||
-		    (le16_to_cpu(de->rec_len) >= EXT2_DIR_REC_LEN(de->name_len) + rec_len)) {
+		if ((le32_to_cpu(de->inode) == 0 && le16_to_cpu(de->rec_len) >= rec_len) || // de's inode == 0 and space is enough...
+		    (le16_to_cpu(de->rec_len) >= EXT2_DIR_REC_LEN(de->name_len) + rec_len)) { // de's free space > new inode's size.
 			offset += le16_to_cpu(de->rec_len);
 			if (le32_to_cpu(de->inode)) {
 				de1 = (struct ext2_dir_entry_2 *) ((char *) de +
@@ -294,10 +294,10 @@ int ext2_add_entry (struct inode * dir, const char * name, int namelen,
 			 */
 			dir->i_mtime = dir->i_ctime = CURRENT_TIME;
 			dir->u.ext2_i.i_flags &= ~EXT2_BTREE_FL;
-			mark_inode_dirty(dir);
+			mark_inode_dirty(dir); // mark inode dirty
 			dir->i_version = ++event;
-			mark_buffer_dirty_inode(bh, dir);
-			if (IS_SYNC(dir)) {
+			mark_buffer_dirty_inode(bh, dir); // mark inode's buffer dirty
+			if (IS_SYNC(dir)) { // 如果要实时写入磁盘、立刻写
 				ll_rw_block (WRITE, 1, &bh);
 				wait_on_buffer (bh);
 			}
@@ -379,7 +379,7 @@ static int ext2_create (struct inode * dir, struct dentry * dentry, int mode)
 		iput (inode);
 		return err;
 	}
-	d_instantiate(dentry, inode);
+	d_instantiate(dentry, inode); // build entry and inode's map relationship
 	return 0;
 }
 

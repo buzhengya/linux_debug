@@ -50,7 +50,7 @@ static kmem_cache_t *dentry_cache;
 static unsigned int d_hash_mask;
 static unsigned int d_hash_shift;
 static struct list_head *dentry_hashtable;
-static LIST_HEAD(dentry_unused);
+static LIST_HEAD(dentry_unused); // 空闲的dentry 引用计数为0
 
 struct {
 	int nr_dentry;
@@ -664,8 +664,8 @@ void d_instantiate(struct dentry *entry, struct inode * inode)
 {
 	spin_lock(&dcache_lock);
 	if (inode)
-		list_add(&entry->d_alias, &inode->i_dentry);
-	entry->d_inode = inode;
+		list_add(&entry->d_alias, &inode->i_dentry); // inode's dentry is multi. add dentry's d_alias to inode's i_dentry list.
+	entry->d_inode = inode; // entry's inode is unique
 	spin_unlock(&dcache_lock);
 }
 
@@ -697,7 +697,7 @@ static inline struct list_head * d_hash(struct dentry * parent, unsigned long ha
 {
 	hash += (unsigned long) parent / L1_CACHE_BYTES;
 	hash = hash ^ (hash >> D_HASHBITS) ^ (hash >> D_HASHBITS*2);
-	return dentry_hashtable + (hash & D_HASHMASK);
+	return dentry_hashtable + (hash & D_HASHMASK); // dentry 通过hash的方式全局缓存
 }
 
 /**
@@ -716,21 +716,21 @@ struct dentry * d_lookup(struct dentry * parent, struct qstr * name)
 	unsigned int len = name->len;
 	unsigned int hash = name->hash;
 	const unsigned char *str = name->name;
-	struct list_head *head = d_hash(parent,hash);
+	struct list_head *head = d_hash(parent,hash); // 通过hash找到头节点
 	struct list_head *tmp;
 
 	spin_lock(&dcache_lock);
-	tmp = head->next;
+	tmp = head->next; // head is invalid?
 	for (;;) {
 		struct dentry * dentry = list_entry(tmp, struct dentry, d_hash);
 		if (tmp == head)
 			break;
 		tmp = tmp->next;
-		if (dentry->d_name.hash != hash)
+		if (dentry->d_name.hash != hash) // hash值相等
 			continue;
-		if (dentry->d_parent != parent)
+		if (dentry->d_parent != parent) // 父目录要相等
 			continue;
-		if (parent->d_op && parent->d_op->d_compare) {
+		if (parent->d_op && parent->d_op->d_compare) { // 比较name
 			if (parent->d_op->d_compare(parent, &dentry->d_name, name))
 				continue;
 		} else {

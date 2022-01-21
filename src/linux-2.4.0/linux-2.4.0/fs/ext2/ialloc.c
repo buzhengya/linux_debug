@@ -54,7 +54,7 @@ static int read_inode_bitmap (struct super_block * sb,
 		retval = -EIO;
 		goto error_out;
 	}
-	bh = bread (sb->s_dev, le32_to_cpu(gdp->bg_inode_bitmap), sb->s_blocksize);
+	bh = bread (sb->s_dev, le32_to_cpu(gdp->bg_inode_bitmap), sb->s_blocksize); // read_from_disk(dev + block number + block size)
 	if (!bh) {
 		ext2_error (sb, "read_inode_bitmap",
 			    "Cannot read inode bitmap - "
@@ -67,7 +67,7 @@ static int read_inode_bitmap (struct super_block * sb,
 	 * this group.  The IO will be retried next time.
 	 */
 error_out:
-	sb->u.ext2_sb.s_inode_bitmap_number[bitmap_nr] = block_group;
+	sb->u.ext2_sb.s_inode_bitmap_number[bitmap_nr] = block_group; // 将加载的block保存到缓存中
 	sb->u.ext2_sb.s_inode_bitmap[bitmap_nr] = bh;
 	return retval;
 }
@@ -101,14 +101,14 @@ static int load_inode_bitmap (struct super_block * sb,
 	    sb->u.ext2_sb.s_inode_bitmap_number[0] == block_group &&
 	    sb->u.ext2_sb.s_inode_bitmap[0] != NULL)
 		return 0;
-	if (sb->u.ext2_sb.s_groups_count <= EXT2_MAX_GROUP_LOADED) {
-		if (sb->u.ext2_sb.s_inode_bitmap[block_group]) {
+	if (sb->u.ext2_sb.s_groups_count <= EXT2_MAX_GROUP_LOADED) { // all inode_bitmap load to cache.
+		if (sb->u.ext2_sb.s_inode_bitmap[block_group]) { // if has loaded from disk..
 			if (sb->u.ext2_sb.s_inode_bitmap_number[block_group] != block_group)
 				ext2_panic (sb, "load_inode_bitmap",
 					    "block_group != inode_bitmap_number");
 			else
 				return block_group;
-		} else {
+		} else { // need load form disk to cache.
 			retval = read_inode_bitmap (sb, block_group,
 						    block_group);
 			if (retval < 0)
@@ -119,19 +119,19 @@ static int load_inode_bitmap (struct super_block * sb,
 
 	for (i = 0; i < sb->u.ext2_sb.s_loaded_inode_bitmaps &&
 		    sb->u.ext2_sb.s_inode_bitmap_number[i] != block_group;
-	     i++)
+	     i++) // find block in sb.u.ext2_sb....(cache)
 		;
 	if (i < sb->u.ext2_sb.s_loaded_inode_bitmaps &&
-  	    sb->u.ext2_sb.s_inode_bitmap_number[i] == block_group) {
-		inode_bitmap_number = sb->u.ext2_sb.s_inode_bitmap_number[i];
+  	    sb->u.ext2_sb.s_inode_bitmap_number[i] == block_group) { // if find block group
+		inode_bitmap_number = sb->u.ext2_sb.s_inode_bitmap_number[i]; // 这里的cache是个数组、基于LRU，因此访问后需要将i对应的block移到数组头
 		inode_bitmap = sb->u.ext2_sb.s_inode_bitmap[i];
-		for (j = i; j > 0; j--) {
+		for (j = i; j > 0; j--) { // i之前的后移一位
 			sb->u.ext2_sb.s_inode_bitmap_number[j] =
 				sb->u.ext2_sb.s_inode_bitmap_number[j - 1];
 			sb->u.ext2_sb.s_inode_bitmap[j] =
 				sb->u.ext2_sb.s_inode_bitmap[j - 1];
 		}
-		sb->u.ext2_sb.s_inode_bitmap_number[0] = inode_bitmap_number;
+		sb->u.ext2_sb.s_inode_bitmap_number[0] = inode_bitmap_number; // block i 移到数组头
 		sb->u.ext2_sb.s_inode_bitmap[0] = inode_bitmap;
 
 		/*
@@ -139,21 +139,21 @@ static int load_inode_bitmap (struct super_block * sb,
 		 * then our last attempt to read the bitmap failed and we have
 		 * just ended up caching that failure.  Try again to read it.
 		 */
-		if (!inode_bitmap)
+		if (!inode_bitmap) // 如果cache无效 从磁盘中读取并将block缓存到cache数组中的0号位
 			retval = read_inode_bitmap (sb, block_group, 0);
 		
 	} else {
-		if (sb->u.ext2_sb.s_loaded_inode_bitmaps < EXT2_MAX_GROUP_LOADED)
+		if (sb->u.ext2_sb.s_loaded_inode_bitmaps < EXT2_MAX_GROUP_LOADED) // 缓存未溢出、缓存数+1
 			sb->u.ext2_sb.s_loaded_inode_bitmaps++;
-		else
+		else // 缓存已满 释放最后一个缓存
 			brelse (sb->u.ext2_sb.s_inode_bitmap[EXT2_MAX_GROUP_LOADED - 1]);
-		for (j = sb->u.ext2_sb.s_loaded_inode_bitmaps - 1; j > 0; j--) {
+		for (j = sb->u.ext2_sb.s_loaded_inode_bitmaps - 1; j > 0; j--) { // 将所有缓存后移一位
 			sb->u.ext2_sb.s_inode_bitmap_number[j] =
 				sb->u.ext2_sb.s_inode_bitmap_number[j - 1];
 			sb->u.ext2_sb.s_inode_bitmap[j] =
 				sb->u.ext2_sb.s_inode_bitmap[j - 1];
 		}
-		retval = read_inode_bitmap (sb, block_group, 0);
+		retval = read_inode_bitmap (sb, block_group, 0); // 将inode_bitmap所在block加载到0号缓存
 	}
 	return retval;
 }
@@ -256,7 +256,7 @@ error_return:
  * For other inodes, search forward from the parent directory\'s block
  * group to find a free inode.
  */
-struct inode * ext2_new_inode (const struct inode * dir, int mode)
+struct inode * ext2_new_inode (const struct inode * dir, int mode) // modify inode_bitmap's bit but not save inode into disk's inode_table.
 {
 	struct super_block * sb;
 	struct buffer_head * bh;
@@ -278,12 +278,12 @@ struct inode * ext2_new_inode (const struct inode * dir, int mode)
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 
-	lock_super (sb);
+	lock_super (sb); // super_block lock
 	es = sb->u.ext2_sb.s_es;
 repeat:
 	gdp = NULL; i=0;
 	
-	if (S_ISDIR(mode)) {
+	if (S_ISDIR(mode)) { // if dir need more space of inode in inode table.
 		avefreei = le32_to_cpu(es->s_free_inodes_count) /
 			sb->u.ext2_sb.s_groups_count;
 /* I am not yet convinced that this next bit is necessary.
@@ -301,16 +301,16 @@ repeat:
 		}
 */
 		if (!gdp) {
-			for (j = 0; j < sb->u.ext2_sb.s_groups_count; j++) {
-				tmp = ext2_get_group_desc (sb, j, &bh2);
+			for (j = 0; j < sb->u.ext2_sb.s_groups_count; j++) { // poll all group in fs
+				tmp = ext2_get_group_desc (sb, j, &bh2); // group desc is load in super_block. so find in kernel cache
 				if (tmp &&
 				    le16_to_cpu(tmp->bg_free_inodes_count) &&
-				    le16_to_cpu(tmp->bg_free_inodes_count) >= avefreei) {
+				    le16_to_cpu(tmp->bg_free_inodes_count) >= avefreei) { // if tmp free inodes_count >= avefreeei
 					if (!gdp || 
 					    (le16_to_cpu(tmp->bg_free_blocks_count) >
-					     le16_to_cpu(gdp->bg_free_blocks_count))) {
+					     le16_to_cpu(gdp->bg_free_blocks_count))) { // block group balance. select most free gorup.
 						i = j;
-						gdp = tmp;
+						gdp = tmp; 
 					}
 				}
 			}
@@ -321,9 +321,9 @@ repeat:
 		/*
 		 * Try to place the inode in its parent directory
 		 */
-		i = dir->u.ext2_i.i_block_group;
+		i = dir->u.ext2_i.i_block_group; // parent's block group
 		tmp = ext2_get_group_desc (sb, i, &bh2);
-		if (tmp && le16_to_cpu(tmp->bg_free_inodes_count))
+		if (tmp && le16_to_cpu(tmp->bg_free_inodes_count)) // if free, just use parent's block group
 			gdp = tmp;
 		else
 		{
@@ -331,7 +331,7 @@ repeat:
 			 * Use a quadratic hash to find a group with a
 			 * free inode
 			 */
-			for (j = 1; j < sb->u.ext2_sb.s_groups_count; j <<= 1) {
+			for (j = 1; j < sb->u.ext2_sb.s_groups_count; j <<= 1) { // block_group index grow by quadratic. (1, 2, 4, 8, ...)
 				i += j;
 				if (i >= sb->u.ext2_sb.s_groups_count)
 					i -= sb->u.ext2_sb.s_groups_count;
@@ -348,7 +348,7 @@ repeat:
 			 * That failed: try linear search for a free inode
 			 */
 			i = dir->u.ext2_i.i_block_group + 1;
-			for (j = 2; j < sb->u.ext2_sb.s_groups_count; j++) {
+			for (j = 2; j < sb->u.ext2_sb.s_groups_count; j++) { // linear search...
 				if (++i >= sb->u.ext2_sb.s_groups_count)
 					i = 0;
 				tmp = ext2_get_group_desc (sb, i, &bh2);
@@ -373,18 +373,18 @@ repeat:
 	bh = sb->u.ext2_sb.s_inode_bitmap[bitmap_nr];
 	if ((j = ext2_find_first_zero_bit ((unsigned long *) bh->b_data,
 				      EXT2_INODES_PER_GROUP(sb))) <
-	    EXT2_INODES_PER_GROUP(sb)) {
+	    EXT2_INODES_PER_GROUP(sb)) { // 从 block中找到了首个为0的bit
 		if (ext2_set_bit (j, bh->b_data)) {
 			ext2_error (sb, "ext2_new_inode",
 				      "bit already set for inode %d", j);
 			goto repeat;
 		}
-		mark_buffer_dirty(bh);
+		mark_buffer_dirty(bh); // 设置buff dirty
 		if (sb->s_flags & MS_SYNCHRONOUS) {
 			ll_rw_block (WRITE, 1, &bh);
 			wait_on_buffer (bh);
 		}
-	} else {
+	} else { // block中未找到为0的bit
 		if (le16_to_cpu(gdp->bg_free_inodes_count) != 0) {
 			ext2_error (sb, "ext2_new_inode",
 				    "Free inodes count corrupted in group %d",
@@ -428,11 +428,11 @@ repeat:
 	} else
 		inode->i_gid = current->fsgid;
 
-	inode->i_ino = j;
+	inode->i_ino = j; // i_ino can map to inode table's block number
 	inode->i_blksize = PAGE_SIZE;	/* This is the optimal IO size (for stat), not the fs block size */
 	inode->i_blocks = 0;
 	inode->i_mtime = inode->i_atime = inode->i_ctime = CURRENT_TIME;
-	inode->u.ext2_i.i_new_inode = 1;
+	inode->u.ext2_i.i_new_inode = 1; // set is new node
 	inode->u.ext2_i.i_flags = dir->u.ext2_i.i_flags;
 	if (S_ISLNK(mode))
 		inode->u.ext2_i.i_flags &= ~(EXT2_IMMUTABLE_FL | EXT2_APPEND_FL);
@@ -445,7 +445,7 @@ repeat:
 	inode->u.ext2_i.i_block_group = i;
 	if (inode->u.ext2_i.i_flags & EXT2_SYNC_FL)
 		inode->i_flags |= S_SYNC;
-	insert_inode_hash(inode);
+	insert_inode_hash(inode); // cache into hash table
 	inode->i_generation = event++;
 	mark_inode_dirty(inode);
 

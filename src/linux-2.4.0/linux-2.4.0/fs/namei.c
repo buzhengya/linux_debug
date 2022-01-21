@@ -110,13 +110,13 @@ static inline int do_getname(const char *filename, char *page)
 	int retval;
 	unsigned long len = PATH_MAX + 1;
 
-	if ((unsigned long) filename >= TASK_SIZE) {
+	if ((unsigned long) filename >= TASK_SIZE) { // 前4byte是len？？？
 		if (!segment_eq(get_fs(), KERNEL_DS))
 			return -EFAULT;
 	} else if (TASK_SIZE - (unsigned long) filename < PAGE_SIZE)
 		len = TASK_SIZE - (unsigned long) filename;
 
-	retval = strncpy_from_user((char *)page, filename, len);
+	retval = strncpy_from_user((char *)page, filename, len); // copy from user to kernel
 	if (retval > 0) {
 		if (retval < len)
 			return 0;
@@ -131,13 +131,13 @@ char * getname(const char * filename)
 	char *tmp, *result;
 
 	result = ERR_PTR(-ENOMEM);
-	tmp = __getname();
+	tmp = __getname(); // kmem_cache_alloc内存分配、最大为4096byte 对应一个page
 	if (tmp)  {
-		int retval = do_getname(filename, tmp);
+		int retval = do_getname(filename, tmp); // copy filename to tmp. form user space to kernel
 
 		result = tmp;
-		if (retval < 0) {
-			putname(tmp);
+		if (retval < 0) { // copy failed.
+			putname(tmp); // release tmp from kernel
 			result = ERR_PTR(retval);
 		}
 	}
@@ -182,14 +182,14 @@ int vfs_permission(struct inode * inode,int mask)
 
 int permission(struct inode * inode,int mask)
 {
-	if (inode->i_op && inode->i_op->permission) {
+	if (inode->i_op && inode->i_op->permission) { // 如果文件系统有校验函数, 调具体的文件系统的权限校验
 		int retval;
 		lock_kernel();
 		retval = inode->i_op->permission(inode, mask);
 		unlock_kernel();
 		return retval;
 	}
-	return vfs_permission(inode, mask);
+	return vfs_permission(inode, mask); // 文件系统无校验函数、调vfs的校验函数
 }
 
 /*
@@ -278,13 +278,13 @@ static struct dentry * real_lookup(struct dentry * parent, struct qstr * name, i
 	 * FIXME! This could use version numbering or similar to
 	 * avoid unnecessary cache lookups.
 	 */
-	result = d_lookup(parent, name);
+	result = d_lookup(parent, name); // redo cache lookup
 	if (!result) {
 		struct dentry * dentry = d_alloc(parent, name);
 		result = ERR_PTR(-ENOMEM);
 		if (dentry) {
 			lock_kernel();
-			result = dir->i_op->lookup(dir, dentry);
+			result = dir->i_op->lookup(dir, dentry); // 调用文件系统的lookup 跳转到ext2文件系统的lookup: ext2_dir_inode_operations
 			unlock_kernel();
 			if (result)
 				dput(dentry);
@@ -312,11 +312,11 @@ static struct dentry * real_lookup(struct dentry * parent, struct qstr * name, i
 static inline int do_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
 	int err;
-	if (current->link_count >= 8)
+	if (current->link_count >= 8) // 总链接跳转次数限制
 		goto loop;
 	current->link_count++;
 	UPDATE_ATIME(dentry->d_inode);
-	err = dentry->d_inode->i_op->follow_link(dentry, nd);
+	err = dentry->d_inode->i_op->follow_link(dentry, nd); // 跳转到：ext2_fast_symlink_inode_operations  ext2_follow_link
 	current->link_count--;
 	return err;
 loop:
@@ -377,37 +377,37 @@ int follow_down(struct vfsmount **mnt, struct dentry **dentry)
 	return __follow_down(mnt,dentry);
 }
  
-static inline void follow_dotdot(struct nameidata *nd)
+static inline void follow_dotdot(struct nameidata *nd) // 路径名为: "..", 修改dentry, mnt
 {
 	while(1) {
 		struct vfsmount *parent;
 		struct dentry *dentry;
 		read_lock(&current->fs->lock);
-		if (nd->dentry == current->fs->root &&
+		if (nd->dentry == current->fs->root && // skip root. current->fs(历史原因进程可以修改自身的根目录，这里是如果访问的进程的根目录，需特殊处理)
 		    nd->mnt == current->fs->rootmnt)  {
 			read_unlock(&current->fs->lock);
 			break;
 		}
 		read_unlock(&current->fs->lock);
 		spin_lock(&dcache_lock);
-		if (nd->dentry != nd->mnt->mnt_root) {
-			dentry = dget(nd->dentry->d_parent);
+		if (nd->dentry != nd->mnt->mnt_root) { // cur is root. 设备之间可以挂载，这里没有到设备的根目录
+			dentry = dget(nd->dentry->d_parent); // 父目录引用计数+1
 			spin_unlock(&dcache_lock);
-			dput(nd->dentry);
-			nd->dentry = dentry;
+			dput(nd->dentry); // 当前目录引用计数-1
+			nd->dentry = dentry; // 修改当前目录
 			break;
 		}
-		parent=nd->mnt->mnt_parent;
-		if (parent == nd->mnt) {
+		parent=nd->mnt->mnt_parent; // 这里到设备的根目录了
+		if (parent == nd->mnt) { // skip 如果设备的父设备还是自身
 			spin_unlock(&dcache_lock);
 			break;
 		}
-		mntget(parent);
+		mntget(parent); // 引用计数+1
 		dentry=dget(nd->mnt->mnt_mountpoint);
 		spin_unlock(&dcache_lock);
 		dput(nd->dentry);
 		nd->dentry = dentry;
-		mntput(nd->mnt);
+		mntput(nd->mnt); // 引用计数-1
 		nd->mnt = parent;
 	}
 }
@@ -426,14 +426,14 @@ int path_walk(const char * name, struct nameidata *nd)
 	int err;
 	unsigned int lookup_flags = nd->flags;
 
-	while (*name=='/')
+	while (*name=='/') // delete redundancy '/' in head
 		name++;
 	if (!*name)
 		goto return_base;
 
 	inode = nd->dentry->d_inode;
 	if (current->link_count)
-		lookup_flags = LOOKUP_FOLLOW;
+		lookup_flags = LOOKUP_FOLLOW; // target is symbol link
 
 	/* At this point we know we have a real path component. */
 	for(;;) {
@@ -441,28 +441,28 @@ int path_walk(const char * name, struct nameidata *nd)
 		struct qstr this;
 		unsigned int c;
 
-		err = permission(inode, MAY_EXEC);
+		err = permission(inode, MAY_EXEC); // check access permission
 		dentry = ERR_PTR(err);
  		if (err)
 			break;
 
 		this.name = name;
-		c = *(const unsigned char *)name;
+		c = *(const unsigned char *)name; // 450-459都是为了获取路径中下一段名称及对应hash值
 
-		hash = init_name_hash();
+		hash = init_name_hash(); // hash = 0;
 		do {
 			name++;
 			hash = partial_name_hash(c, hash);
 			c = *(const unsigned char *)name;
-		} while (c && (c != '/'));
-		this.len = name - (const char *) this.name;
-		this.hash = end_name_hash(hash);
+		} while (c && (c != '/')); // cal hash valule for name. name is splited by '/'
+		this.len = name - (const char *) this.name; // cal name len.
+		this.hash = end_name_hash(hash); // the final hash value
 
 		/* remove trailing slashes? */
-		if (!c)
+		if (!c) // arrive end and last is not directory
 			goto last_component;
-		while (*++name == '/');
-		if (!*name)
+		while (*++name == '/'); // discard repeate '/'
+		if (!*name) // arrive end and last is directory. deal name in last_with_slashes
 			goto last_with_slashes;
 
 		/*
@@ -473,13 +473,13 @@ int path_walk(const char * name, struct nameidata *nd)
 		if (this.name[0] == '.') switch (this.len) {
 			default:
 				break;
-			case 2:	
-				if (this.name[1] != '.')
+			case 2:
+				if (this.name[1] != '.') // illegal ".c"  c is not '.'
 					break;
-				follow_dotdot(nd);
-				inode = nd->dentry->d_inode;
+				follow_dotdot(nd); // 父目录...
+				inode = nd->dentry->d_inode; // 修改当前inode
 				/* fallthrough */
-			case 1:
+			case 1: // name is "." 当前目录
 				continue;
 		}
 		/*
@@ -492,7 +492,7 @@ int path_walk(const char * name, struct nameidata *nd)
 				break;
 		}
 		/* This does the actual lookups.. */
-		dentry = cached_lookup(nd->dentry, &this, LOOKUP_CONTINUE);
+		dentry = cached_lookup(nd->dentry, &this, LOOKUP_CONTINUE); // 从全局的hash表缓存中查找
 		if (!dentry) {
 			dentry = real_lookup(nd->dentry, &this, LOOKUP_CONTINUE);
 			err = PTR_ERR(dentry);
@@ -511,8 +511,8 @@ int path_walk(const char * name, struct nameidata *nd)
 		if (!inode->i_op)
 			goto out_dput;
 
-		if (inode->i_op->follow_link) {
-			err = do_follow_link(dentry, nd);
+		if (inode->i_op->follow_link) { // 如果follow_link != null, 说明是link类型文件
+			err = do_follow_link(dentry, nd); // 链接跳转
 			dput(dentry);
 			if (err)
 				goto return_err;
@@ -528,17 +528,17 @@ int path_walk(const char * name, struct nameidata *nd)
 			nd->dentry = dentry;
 		}
 		err = -ENOTDIR; 
-		if (!inode->i_op->lookup)
+		if (!inode->i_op->lookup) // 无lookup 说明是非目录
 			break;
 		continue;
 		/* here ends the main loop */
 
-last_with_slashes:
+last_with_slashes: // 这里处理以 '/' 结尾的情况，且未处理最后一个目录
 		lookup_flags |= LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
-last_component:
+last_component: // 这里处理路径中的最后一个元素
 		if (lookup_flags & LOOKUP_PARENT)
 			goto lookup_parent;
-		if (this.name[0] == '.') switch (this.len) {
+		if (this.name[0] == '.') switch (this.len) { // 对last name做处理 如果last name 含 '.'
 			default:
 				break;
 			case 2:	
@@ -555,7 +555,7 @@ last_component:
 			if (err < 0)
 				break;
 		}
-		dentry = cached_lookup(nd->dentry, &this, 0);
+		dentry = cached_lookup(nd->dentry, &this, 0); // dentry 查询 这里的 LOOKUP_CONTINUE flag 0 -> 1
 		if (!dentry) {
 			dentry = real_lookup(nd->dentry, &this, 0);
 			err = PTR_ERR(dentry);
@@ -566,7 +566,7 @@ last_component:
 			;
 		inode = dentry->d_inode;
 		if ((lookup_flags & LOOKUP_FOLLOW)
-		    && inode && inode->i_op && inode->i_op->follow_link) {
+		    && inode && inode->i_op && inode->i_op->follow_link) { // 链接跳转 目录且inode有效
 			err = do_follow_link(dentry, nd);
 			dput(dentry);
 			if (err)
@@ -579,7 +579,7 @@ last_component:
 		err = -ENOENT;
 		if (!inode)
 			goto no_inode;
-		if (lookup_flags & LOOKUP_DIRECTORY) {
+		if (lookup_flags & LOOKUP_DIRECTORY) { // 如果是目录 inode必须有效
 			err = -ENOTDIR; 
 			if (!inode->i_op || !inode->i_op->lookup)
 				break;
@@ -591,7 +591,7 @@ no_inode:
 			break;
 		goto return_base;
 lookup_parent:
-		nd->last = this;
+		nd->last = this; // if lookup_parent bind last path_nat to nd->last
 		nd->last_type = LAST_NORM;
 		if (this.name[0] != '.')
 			goto return_base;
@@ -673,7 +673,7 @@ static inline int
 walk_init_root(const char *name, struct nameidata *nd)
 {
 	read_lock(&current->fs->lock);
-	if (current->fs->altroot && !(nd->flags & LOOKUP_NOALT)) {
+	if (current->fs->altroot && !(nd->flags & LOOKUP_NOALT)) { // 如果当前进程切换了根路径
 		nd->mnt = mntget(current->fs->altrootmnt);
 		nd->dentry = dget(current->fs->altroot);
 		read_unlock(&current->fs->lock);
@@ -692,10 +692,10 @@ int path_init(const char *name, unsigned int flags, struct nameidata *nd)
 {
 	nd->last_type = LAST_ROOT; /* if there are only slashes... */
 	nd->flags = flags;
-	if (*name=='/')
+	if (*name=='/') // first is root. absolute path!
 		return walk_init_root(name,nd);
-	read_lock(&current->fs->lock);
-	nd->mnt = mntget(current->fs->pwdmnt);
+	read_lock(&current->fs->lock); // relative path
+	nd->mnt = mntget(current->fs->pwdmnt); // current work directory
 	nd->dentry = dget(current->fs->pwd);
 	read_unlock(&current->fs->lock);
 	return 1;
@@ -729,16 +729,16 @@ struct dentry * lookup_hash(struct qstr *name, struct dentry * base)
 			goto out;
 	}
 
-	dentry = cached_lookup(base, name, 0);
+	dentry = cached_lookup(base, name, 0); // lookup in memory cache
 	if (!dentry) {
 		struct dentry *new = d_alloc(base, name);
 		dentry = ERR_PTR(-ENOMEM);
 		if (!new)
 			goto out;
 		lock_kernel();
-		dentry = inode->i_op->lookup(inode, new);
+		dentry = inode->i_op->lookup(inode, new); // lookup in ext2 disk
 		unlock_kernel();
-		if (!dentry)
+		if (!dentry) // if not find. retury new.
 			dentry = new;
 		else
 			dput(new);
@@ -786,18 +786,18 @@ access:
  * that namei follows links, while lnamei does not.
  * SMP-safe
  */
-int __user_walk(const char *name, unsigned flags, struct nameidata *nd)
+int __user_walk(const char *name, unsigned flags, struct nameidata *nd) // name is path. nd is result path for name. flag: from LOOKUP_FOLLOW to LOOKUP_NOALT.
 {
 	char *tmp;
 	int err;
 
-	tmp = getname(name);
+	tmp = getname(name); // copy name form user space to kernel space.
 	err = PTR_ERR(tmp);
 	if (!IS_ERR(tmp)) {
 		err = 0;
-		if (path_init(tmp, flags, nd))
+		if (path_init(tmp, flags, nd)) // 初始化起始路径：根路径 or 当前工作目录？
 			err = path_walk(tmp, nd);
-		putname(tmp);
+		putname(tmp); // release kernel memory for filename
 	}
 	return err;
 }
@@ -903,7 +903,7 @@ int vfs_create(struct inode *dir, struct dentry *dentry, int mode)
 	mode |= S_IFREG;
 
 	down(&dir->i_zombie);
-	error = may_create(dir, dentry);
+	error = may_create(dir, dentry); // check dentry write and exec permission
 	if (error)
 		goto exit_lock;
 
@@ -913,12 +913,12 @@ int vfs_create(struct inode *dir, struct dentry *dentry, int mode)
 
 	DQUOT_INIT(dir);
 	lock_kernel();
-	error = dir->i_op->create(dir, dentry, mode);
+	error = dir->i_op->create(dir, dentry, mode); // jump to ext2_create
 	unlock_kernel();
 exit_lock:
 	up(&dir->i_zombie);
 	if (!error)
-		inode_dir_notify(dir, DN_CREATE);
+		inode_dir_notify(dir, DN_CREATE); // notify parent inode dirty.
 	return error;
 }
 
@@ -949,7 +949,7 @@ int open_namei(const char * pathname, int flag, int mode, struct nameidata *nd)
 	/*
 	 * The simplest case - just a plain lookup.
 	 */
-	if (!(flag & O_CREAT)) {
+	if (!(flag & O_CREAT)) { // 不创建 直接调 path_walk查找
 		if (path_init(pathname, lookup_flags(flag), nd))
 			error = path_walk(pathname, nd);
 		if (error)
@@ -961,7 +961,7 @@ int open_namei(const char * pathname, int flag, int mode, struct nameidata *nd)
 	/*
 	 * Create - we need to know the parent.
 	 */
-	if (path_init(pathname, LOOKUP_PARENT, nd))
+	if (path_init(pathname, LOOKUP_PARENT, nd)) // create. so call path_walk find parent directory
 		error = path_walk(pathname, nd);
 	if (error)
 		return error;
@@ -977,7 +977,7 @@ int open_namei(const char * pathname, int flag, int mode, struct nameidata *nd)
 
 	dir = nd->dentry;
 	down(&dir->d_inode->i_sem);
-	dentry = lookup_hash(&nd->last, nd->dentry);
+	dentry = lookup_hash(&nd->last, nd->dentry); // nd->last is last name in path. dentry is not null even if nd->last not exist.
 
 do_last:
 	error = PTR_ERR(dentry);
@@ -987,7 +987,7 @@ do_last:
 	}
 
 	/* Negative dentry, just create the file */
-	if (!dentry->d_inode) {
+	if (!dentry->d_inode) { // dentry is always exist. if inode not exist, create new file.
 		error = vfs_create(dir->d_inode, dentry, mode);
 		up(&dir->d_inode->i_sem);
 		dput(nd->dentry);
@@ -1006,7 +1006,7 @@ do_last:
 	up(&dir->d_inode->i_sem);
 
 	error = -EEXIST;
-	if (flag & O_EXCL)
+	if (flag & O_EXCL) // if O_CREATE and O_EXCL file must not exist.
 		goto exit_dput;
 
 	if (d_mountpoint(dentry)) {
@@ -1033,14 +1033,14 @@ ok:
 		goto exit;
 
 	error = -ELOOP;
-	if (S_ISLNK(inode->i_mode))
+	if (S_ISLNK(inode->i_mode)) // can't be link
 		goto exit;
 	
 	error = -EISDIR;
-	if (S_ISDIR(inode->i_mode) && (flag & FMODE_WRITE))
+	if (S_ISDIR(inode->i_mode) && (flag & FMODE_WRITE)) // can't be dir and need write mode.
 		goto exit;
 
-	error = permission(inode,acc_mode);
+	error = permission(inode,acc_mode); // check permission
 	if (error)
 		goto exit;
 
@@ -1049,9 +1049,9 @@ ok:
 	 * actually live on the filesystem itself, and as such you
 	 * can write to them even if the filesystem is read-only.
 	 */
-	if (S_ISFIFO(inode->i_mode) || S_ISSOCK(inode->i_mode)) {
+	if (S_ISFIFO(inode->i_mode) || S_ISSOCK(inode->i_mode)) { // if is fifo and sock. write by trunc mode.
 	    	flag &= ~O_TRUNC;
-	} else if (S_ISBLK(inode->i_mode) || S_ISCHR(inode->i_mode)) {
+	} else if (S_ISBLK(inode->i_mode) || S_ISCHR(inode->i_mode)) { // if block or char device. can not access
 		error = -EACCES;
 		if (IS_NODEV(inode))
 			goto exit;
@@ -1059,14 +1059,14 @@ ok:
 		flag &= ~O_TRUNC;
 	} else {
 		error = -EROFS;
-		if (IS_RDONLY(inode) && (flag & 2))
+		if (IS_RDONLY(inode) && (flag & 2)) // if readonly, exit.
 			goto exit;
 	}
 	/*
 	 * An append-only file must be opened in append mode for writing.
 	 */
 	error = -EPERM;
-	if (IS_APPEND(inode)) {
+	if (IS_APPEND(inode)) { // check append mask.
 		if  ((flag & FMODE_WRITE) && !(flag & O_APPEND))
 			goto exit;
 		if (flag & O_TRUNC)
@@ -1076,7 +1076,7 @@ ok:
 	/*
 	 * Ensure there are no outstanding leases on the file.
 	 */
-	error = get_lease(inode, flag);
+	error = get_lease(inode, flag); // lease is valid.
 	if (error)
 		goto exit;
 
@@ -1904,14 +1904,14 @@ out:
 }
 
 static inline int
-__vfs_follow_link(struct nameidata *nd, const char *link)
+__vfs_follow_link(struct nameidata *nd, const char *link) // nd是当前已经寻址到的dentry + inode，link是对应的实际链接到的地址 因此这里的目的是把nd转化为link对应的dentry + inode信息
 {
 	int res = 0;
 	char *name;
 	if (IS_ERR(link))
 		goto fail;
 
-	if (*link == '/') {
+	if (*link == '/') { // 如果链接是个绝对路径 重新初始化 跳转到链接开始的地方
 		path_release(nd);
 		if (!walk_init_root(link, nd))
 			/* weird __emul_prefix() stuff did it */

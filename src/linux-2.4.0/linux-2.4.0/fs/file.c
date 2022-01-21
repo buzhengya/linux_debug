@@ -175,18 +175,18 @@ int expand_fdset(struct files_struct *files, int nr)
 
 	/* Expand to the max in easy steps */
 	do {
-		if (nfds < (PAGE_SIZE * 8))
+		if (nfds < (PAGE_SIZE * 8)) //PAGE_SIZE is 1024
 			nfds = PAGE_SIZE * 8;
 		else {
-			nfds = nfds * 2;
+			nfds = nfds * 2; // double
 			if (nfds > NR_OPEN)
 				nfds = NR_OPEN;
 		}
-	} while (nfds <= nr);
+	} while (nfds <= nr); // expand until nfds >= nr
 
 	error = -ENOMEM;
-	new_openset = alloc_fdset(nfds);
-	new_execset = alloc_fdset(nfds);
+	new_openset = alloc_fdset(nfds); // files->open_fds
+	new_execset = alloc_fdset(nfds); // files->close_on_exec
 	write_lock(&files->file_lock);
 	if (!new_openset || !new_execset)
 		goto out;

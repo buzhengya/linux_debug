@@ -385,24 +385,24 @@ struct block_device {
 };
 
 struct inode {
-	struct list_head	i_hash;
-	struct list_head	i_list;
-	struct list_head	i_dentry;
+	struct list_head	i_hash; // hash table中的链表
+	struct list_head	i_list; // 
+	struct list_head	i_dentry; // 指向该inode的目录项的链表
 	
 	struct list_head	i_dirty_buffers;
 
-	unsigned long		i_ino;
-	atomic_t		i_count;
-	kdev_t			i_dev;
+	unsigned long		i_ino; // 同文件系统中唯一 通过该值在inode_hashtable中索引
+	atomic_t		i_count; // 共享计数
+	kdev_t			i_dev; // 主设备号 表示设备的种类
 	umode_t			i_mode;
-	nlink_t			i_nlink;
+	nlink_t			i_nlink; // 软链接数量
 	uid_t			i_uid;
 	gid_t			i_gid;
-	kdev_t			i_rdev;
-	loff_t			i_size;
-	time_t			i_atime;
-	time_t			i_mtime;
-	time_t			i_ctime;
+	kdev_t			i_rdev; // 次设备号 表示该种设备的顺序
+	loff_t			i_size; // 
+	time_t			i_atime; // access
+	time_t			i_mtime; // modify
+	time_t			i_ctime; // create
 	unsigned long		i_blksize;
 	unsigned long		i_blocks;
 	unsigned long		i_version;
@@ -497,9 +497,9 @@ struct fown_struct {
 
 struct file {
 	struct list_head	f_list;
-	struct dentry		*f_dentry;
-	struct vfsmount         *f_vfsmnt;
-	struct file_operations	*f_op;
+	struct dentry		*f_dentry; // 目录
+	struct vfsmount         *f_vfsmnt; // 挂载的文件系统
+	struct file_operations	*f_op; // 操作
 	atomic_t		f_count;
 	unsigned int 		f_flags;
 	mode_t			f_mode;
@@ -613,7 +613,7 @@ extern void __kill_fasync(struct fasync_struct *, int, int);
 struct nameidata {
 	struct dentry *dentry;
 	struct vfsmount *mnt;
-	struct qstr last;
+	struct qstr last; // when lookup paretn. bind path last name into here.
 	unsigned int flags;
 	int last_type;
 };
@@ -770,7 +770,7 @@ struct block_device_operations {
  * read, write, poll, fsync, readv, writev can be called
  *   without the big kernel lock held in all filesystems.
  */
-struct file_operations {
+struct file_operations { // 抽象的文件系统接口
 	struct module *owner;
 	loff_t (*llseek) (struct file *, loff_t, int);
 	ssize_t (*read) (struct file *, char *, size_t, loff_t *);

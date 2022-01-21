@@ -43,7 +43,7 @@ struct ext2_group_desc * ext2_get_group_desc(struct super_block * sb,
 	unsigned long desc;
 	struct ext2_group_desc * gdp;
 
-	if (block_group >= sb->u.ext2_sb.s_groups_count) {
+	if (block_group >= sb->u.ext2_sb.s_groups_count) { // block group overflow
 		ext2_error (sb, "ext2_get_group_desc",
 			    "block_group >= groups_count - "
 			    "block_group = %d, groups_count = %lu",
@@ -54,7 +54,7 @@ struct ext2_group_desc * ext2_get_group_desc(struct super_block * sb,
 	
 	group_desc = block_group / EXT2_DESC_PER_BLOCK(sb);
 	desc = block_group % EXT2_DESC_PER_BLOCK(sb);
-	if (!sb->u.ext2_sb.s_group_desc[group_desc]) {
+	if (!sb->u.ext2_sb.s_group_desc[group_desc]) { // group is null???
 		ext2_error (sb, "ext2_get_group_desc",
 			    "Group descriptor not loaded - "
 			    "block_group = %d, group_desc = %lu, desc = %lu",
@@ -63,7 +63,7 @@ struct ext2_group_desc * ext2_get_group_desc(struct super_block * sb,
 	}
 	
 	gdp = (struct ext2_group_desc *) 
-	      sb->u.ext2_sb.s_group_desc[group_desc]->b_data;
+	      sb->u.ext2_sb.s_group_desc[group_desc]->b_data; // super block is load to kernel cache.
 	if (bh)
 		*bh = sb->u.ext2_sb.s_group_desc[group_desc];
 	return gdp + desc;

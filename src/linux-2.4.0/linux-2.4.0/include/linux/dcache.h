@@ -61,12 +61,12 @@ struct dentry {
 	unsigned int d_flags;
 	struct inode  * d_inode;	/* Where the name belongs to - NULL is negative */
 	struct dentry * d_parent;	/* parent directory */
-	struct list_head d_vfsmnt;
-	struct list_head d_hash;	/* lookup hash list */
-	struct list_head d_lru;		/* d_count = 0 LRU list */
-	struct list_head d_child;	/* child of parent list */
-	struct list_head d_subdirs;	/* our children */
-	struct list_head d_alias;	/* inode alias list */
+	struct list_head d_vfsmnt;	// when entry is start for device
+	struct list_head d_hash;	/* lookup hash list 对应dentry_hashtable */
+	struct list_head d_lru;		/* d_count = 0 LRU list 对应dentry_unused*/
+	struct list_head d_child;	/* child of parent list 同一个parent */
+	struct list_head d_subdirs;	/* our children 自己的子目录 */
+	struct list_head d_alias;	/* inode alias list 通过link的方式链接起来的dentry的链表 这是dentry在inode中的链表元素节点 */
 	struct qstr d_name;
 	unsigned long d_time;		/* used by d_revalidate */
 	struct dentry_operations  *d_op;

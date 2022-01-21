@@ -643,7 +643,7 @@ struct file *dentry_open(struct dentry *dentry, struct vfsmount *mnt, int flags)
 	f->f_mode = (flags+1) & O_ACCMODE;
 	inode = dentry->d_inode;
 	if (f->f_mode & FMODE_WRITE) {
-		error = get_write_access(inode);
+		error = get_write_access(inode); // check write access.
 		if (error)
 			goto cleanup_file;
 	}
@@ -652,11 +652,11 @@ struct file *dentry_open(struct dentry *dentry, struct vfsmount *mnt, int flags)
 	f->f_vfsmnt = mnt;
 	f->f_pos = 0;
 	f->f_reada = 0;
-	f->f_op = fops_get(inode->i_fop);
+	f->f_op = fops_get(inode->i_fop); // set f_op. try inc point count.
 	if (inode->i_sb)
 		file_move(f, &inode->i_sb->s_files);
 	if (f->f_op && f->f_op->open) {
-		error = f->f_op->open(inode,f);
+		error = f->f_op->open(inode,f); // ext2_open_file 大文件处理 32bit 溢出4G？
 		if (error)
 			goto cleanup_all;
 	}
@@ -690,7 +690,7 @@ int get_unused_fd(void)
 	write_lock(&files->file_lock);
 
 repeat:
- 	fd = find_next_zero_bit(files->open_fds, 
+ 	fd = find_next_zero_bit(files->open_fds, // find next nou used bit in open_fds.
 				files->max_fdset, 
 				files->next_fd);
 
@@ -698,13 +698,13 @@ repeat:
 	 * N.B. For clone tasks sharing a files structure, this test
 	 * will limit the total number of files that can be opened.
 	 */
-	if (fd >= current->rlim[RLIMIT_NOFILE].rlim_cur)
+	if (fd >= current->rlim[RLIMIT_NOFILE].rlim_cur) // fd超出了进程的资源限制
 		goto out;
 
 	/* Do we need to expand the fdset array? */
 	if (fd >= files->max_fdset) {
-		error = expand_fdset(files, fd);
-		if (!error) {
+		error = expand_fdset(files, fd); // fd_set的作用是用来标识fd的状态 如是否有效、exec时是否要close 但具体怎么存及怎么用的，不清楚！！！
+		if (!error) { // expand succuess goto repeate...
 			error = -EMFILE;
 			goto repeat;
 		}
@@ -716,16 +716,16 @@ repeat:
 	 */
 	if (fd >= files->max_fds) {
 		error = expand_fd_array(files, fd);
-		if (!error) {
+		if (!error) { // expand succuess goto repeate...
 			error = -EMFILE;
 			goto repeat;
 		}
 		goto out;
 	}
 
-	FD_SET(fd, files->open_fds);
-	FD_CLR(fd, files->close_on_exec);
-	files->next_fd = fd + 1;
+	FD_SET(fd, files->open_fds); // set fd_set of open_fds bits
+	FD_CLR(fd, files->close_on_exec); // set fd_set of close_on_exec bits
+	files->next_fd = fd + 1; // update next_fd
 #if 1
 	/* Sanity check */
 	if (files->fd[fd] != NULL) {
@@ -757,7 +757,7 @@ asmlinkage long sys_open(const char * filename, int flags, int mode)
 			error = PTR_ERR(f);
 			if (IS_ERR(f))
 				goto out_error;
-			fd_install(fd, f);
+			fd_install(fd, f); // bind f to files->fd[fd]
 		}
 out:
 		putname(tmp);

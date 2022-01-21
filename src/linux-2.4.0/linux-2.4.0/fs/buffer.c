@@ -983,14 +983,14 @@ struct buffer_head * getblk(kdev_t dev, int block, int size)
 repeat:
 	spin_lock(&lru_list_lock);
 	write_lock(&hash_table_lock);
-	bh = __get_hash_table(dev, block, size);
+	bh = __get_hash_table(dev, block, size); // hash by (dev, block, size)
 	if (bh)
 		goto out;
 
 	isize = BUFSIZE_INDEX(size);
 	spin_lock(&free_list[isize].lock);
 	bh = free_list[isize].list;
-	if (bh) {
+	if (bh) { // get buffer from free_list
 		__remove_from_free_list(bh, isize);
 		atomic_set(&bh->b_count, 1);
 	}
@@ -1001,7 +1001,7 @@ repeat:
 	 * its kind, we hold a reference (b_count>0), it is unlocked,
 	 * and it is clean.
 	 */
-	if (bh) {
+	if (bh) { // init buffer
 		init_buffer(bh, NULL, NULL);
 		bh->b_dev = dev;
 		bh->b_blocknr = block;
@@ -1174,10 +1174,10 @@ struct buffer_head * bread(kdev_t dev, int block, int size)
 {
 	struct buffer_head * bh;
 
-	bh = getblk(dev, block, size);
+	bh = getblk(dev, block, size); // 从缓存中获取对应的block数据 或者 获取一块缓存用于存储数据
 	if (buffer_uptodate(bh))
 		return bh;
-	ll_rw_block(READ, 1, &bh);
+	ll_rw_block(READ, 1, &bh); // 从磁盘中读, 这里是创建读磁盘请求 然后等待读取成功后线程继续执行
 	wait_on_buffer(bh);
 	if (buffer_uptodate(bh))
 		return bh;

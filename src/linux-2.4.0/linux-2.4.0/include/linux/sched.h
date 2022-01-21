@@ -166,14 +166,14 @@ extern int current_is_keventd(void);
  * Open file table structure
  */
 struct files_struct {
-	atomic_t count;
-	rwlock_t file_lock;
-	int max_fds;
-	int max_fdset;
-	int next_fd;
-	struct file ** fd;	/* current fd array */
-	fd_set *close_on_exec;
-	fd_set *open_fds;
+	atomic_t count; // 共享files_struct的进程数
+	rwlock_t file_lock; // 锁 并发控制
+	int max_fds; // fd array 的容量
+	int max_fdset; // open_fds array 的容量
+	int next_fd; // 已分配的fd + 1
+	struct file ** fd;	/* current fd array 实际存储当前已打开的有效的fd数组 初始时指向fd_array */
+	fd_set *close_on_exec; // fd_set 本质是个固定长度的long数组
+	fd_set *open_fds; // 已打开的fd数组的位图 用来快速查找空闲的fd
 	fd_set close_on_exec_init;
 	fd_set open_fds_init;
 	struct file * fd_array[NR_OPEN_DEFAULT];

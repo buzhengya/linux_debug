@@ -53,7 +53,7 @@ static unsigned int i_hash_shift;
 
 static LIST_HEAD(inode_in_use);
 static LIST_HEAD(inode_unused);
-static struct list_head *inode_hashtable;
+static struct list_head *inode_hashtable; // 全局的hash table 通过inode->i_ino索引
 static LIST_HEAD(anon_hash_chain); /* for inodes with NULL i_sb */
 
 /*
@@ -656,13 +656,13 @@ static struct inode * get_new_inode(struct super_block *sb, unsigned long ino, s
 {
 	struct inode * inode;
 
-	inode = alloc_inode();
+	inode = alloc_inode(); // alloc by kmem_cache_alloc
 	if (inode) {
 		struct inode * old;
 
 		spin_lock(&inode_lock);
 		/* We released the lock, so.. */
-		old = find_inode(sb, ino, head, find_actor, opaque);
+		old = find_inode(sb, ino, head, find_actor, opaque); // try find inode from cache again
 		if (!old) {
 			inodes_stat.nr_inodes++;
 			list_add(&inode->i_list, &inode_in_use);
@@ -676,7 +676,7 @@ static struct inode * get_new_inode(struct super_block *sb, unsigned long ino, s
 			spin_unlock(&inode_lock);
 
 			clean_inode(inode);
-			sb->s_op->read_inode(inode);
+			sb->s_op->read_inode(inode); // 跳转到ext2的函数 ext2_sops
 
 			/*
 			 * This is special!  We do not need the spinlock
@@ -773,11 +773,11 @@ struct inode *igrab(struct inode *inode)
 
 struct inode *iget4(struct super_block *sb, unsigned long ino, find_inode_t find_actor, void *opaque)
 {
-	struct list_head * head = inode_hashtable + hash(sb,ino);
+	struct list_head * head = inode_hashtable + hash(sb,ino); // hash(super_block_addr, inode_number) find in cache
 	struct inode * inode;
 
 	spin_lock(&inode_lock);
-	inode = find_inode(sb, ino, head, find_actor, opaque);
+	inode = find_inode(sb, ino, head, find_actor, opaque); // find inode in hash list
 	if (inode) {
 		__iget(inode);
 		spin_unlock(&inode_lock);

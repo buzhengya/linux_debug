@@ -15,7 +15,7 @@ void thread_func(void) {
     sleep(60 * 1000);
 }
 
-const int THREAD_NUM = 128;
+const int THREAD_NUM = 32;
 
 int main(void) {
     pthread_t tid;
