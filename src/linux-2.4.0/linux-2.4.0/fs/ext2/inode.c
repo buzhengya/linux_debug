@@ -82,7 +82,7 @@ void ext2_discard_prealloc (struct inode * inode)
 #endif
 }
 
-static int ext2_alloc_block (struct inode * inode, unsigned long goal, int *err)
+static int ext2_alloc_block (struct inode * inode, unsigned long goal, int *err) // goal是建议分配的block号 返回的result是实际的block号. 这里的block号都是设备的block号
 {
 #ifdef EXT2FS_DEBUG
 	static unsigned long alloc_hits = 0, alloc_attempts = 0;
@@ -123,10 +123,10 @@ static int ext2_alloc_block (struct inode * inode, unsigned long goal, int *err)
 }
 
 typedef struct {
-	u32	*p; // 内核中key值的指针
-	u32	key; // 文件的block号(block偏移量)对应在文件系统中的block值
+	u32	*p; // 内核中key值的地址 这里是bh的buffer_head的内存 bh->b_data + offset = p == key
+	u32	key; // 文件的block号(block偏移量)对应在文件系统中的block值 这里指明了文件会存储在磁盘的哪个位置
 	struct buffer_head *bh;
-} Indirect;
+} Indirect; // 多级索引中的一环 key表示具体的索引值 bh表示索引对应的block buffer p表示bh中存储索引key的内存地址
 
 static inline void add_chain(Indirect *p, struct buffer_head *bh, u32 *v)
 {
@@ -136,7 +136,7 @@ static inline void add_chain(Indirect *p, struct buffer_head *bh, u32 *v)
 
 static inline int verify_chain(Indirect *from, Indirect *to)
 {
-	while (from <= to && from->key == *from->p)
+	while (from <= to && from->key == *from->p) // from->p原是指向from->key的指针，这里是为了校验链接关系是否有效？
 		from++;
 	return (from > to);
 }
@@ -243,7 +243,7 @@ static inline Indirect *ext2_get_branch(struct inode *inode,
 
 	*err = 0;
 	/* i_data is not going away, no lock needed */
-	add_chain (chain, NULL, inode->u.ext2_i.i_data + *offsets); // inode->u.ext2_i.i_data ==> inode的block信息的起始地址 + offset偏移量 得到存放第一个block号的地址
+	add_chain (chain, NULL, inode->u.ext2_i.i_data + *offsets); // inode->u.ext2_i.i_data ==> inode的block信息的起始地址 + offset偏移量 得到存放第一个block号的地址. 这里首个buffer_head为NULL, 因为block number是在i_data数组中
 	if (!p->key)
 		goto no_block;
 	while (--depth) {
@@ -255,7 +255,7 @@ static inline Indirect *ext2_get_branch(struct inode *inode,
 			goto changed;
 		add_chain(++p, bh, (u32*)bh->b_data + *++offsets); // 如果block需要多级索引、这里是下一级索引
 		/* Reader: end */
-		if (!p->key)
+		if (!p->key) // block and buffer not alloc
 			goto no_block;
 	}
 	return NULL;
@@ -290,11 +290,11 @@ static inline unsigned long ext2_find_near(struct inode *inode, Indirect *ind)
 
 	/* Try to find previous block */
 	for (p = ind->p - 1; p >= start; p--)
-		if (*p)
+		if (*p) // 块号有效 直接返回
 			return le32_to_cpu(*p);
 
 	/* No such thing, so let's try location of indirect block */
-	if (ind->bh)
+	if (ind->bh) // 如果整个块都无效 则以间接块本身作为块号
 		return ind->bh->b_blocknr;
 
 	/*
@@ -303,7 +303,7 @@ static inline unsigned long ext2_find_near(struct inode *inode, Indirect *ind)
 	 */
 	return (inode->u.ext2_i.i_block_group * 
 		EXT2_BLOCKS_PER_GROUP(inode->i_sb)) +
-	       le32_to_cpu(inode->i_sb->u.ext2_sb.s_es->s_first_data_block);
+	       le32_to_cpu(inode->i_sb->u.ext2_sb.s_es->s_first_data_block); // inodes所在block group的第一个block
 }
 
 /**
@@ -326,7 +326,7 @@ static inline int ext2_find_goal(struct inode *inode,
 				 unsigned long *goal)
 {
 	/* Writer: ->i_next_alloc* */
-	if (block == inode->u.ext2_i.i_next_alloc_block + 1) {
+	if (block == inode->u.ext2_i.i_next_alloc_block + 1) { // 如果文件是连续的，现在要创建的block == 就是下一个待分配的block号
 		inode->u.ext2_i.i_next_alloc_block++;
 		inode->u.ext2_i.i_next_alloc_goal++;
 	} 
@@ -337,10 +337,10 @@ static inline int ext2_find_goal(struct inode *inode,
 		 * try the heuristic for sequential allocation,
 		 * failing that at least try to get decent locality.
 		 */
-		if (block == inode->u.ext2_i.i_next_alloc_block)
-			*goal = inode->u.ext2_i.i_next_alloc_goal;
+		if (block == inode->u.ext2_i.i_next_alloc_block) // 连续 block = next_alloc block
+			*goal = inode->u.ext2_i.i_next_alloc_goal; // goal是建议的设备中的block号
 		if (!*goal)
-			*goal = ext2_find_near(inode, partial);
+			*goal = ext2_find_near(inode, partial); // 有空洞
 		return 0;
 	}
 	/* Reader: end */
@@ -376,15 +376,15 @@ static int ext2_alloc_branch(struct inode *inode,
 			     int num,
 			     unsigned long goal,
 			     int *offsets,
-			     Indirect *branch)
+			     Indirect *branch) // 为goal block的分级索引块分配block
 {
 	int blocksize = inode->i_sb->s_blocksize;
 	int n = 0;
 	int err;
 	int i;
-	int parent = ext2_alloc_block(inode, goal, &err);
+	int parent = ext2_alloc_block(inode, goal, &err); // alloc disk block and return block number.
 
-	branch[0].key = cpu_to_le32(parent);
+	branch[0].key = cpu_to_le32(parent); // but branch's p not set?
 	if (parent) for (n = 1; n < num; n++) {
 		struct buffer_head *bh;
 		/* Allocate the next block */
@@ -396,7 +396,7 @@ static int ext2_alloc_branch(struct inode *inode,
 		 * Get buffer_head for parent block, zero it out and set 
 		 * the pointer to new one, then send parent to disk.
 		 */
-		bh = getblk(inode->i_dev, parent, blocksize);
+		bh = getblk(inode->i_dev, parent, blocksize); // get buffer for parent and then set block number in buffer
 		if (!buffer_uptodate(bh))
 			wait_on_buffer(bh);
 		memset(bh->b_data, 0, blocksize);
@@ -405,7 +405,7 @@ static int ext2_alloc_branch(struct inode *inode,
 		*branch[n].p = branch[n].key;
 		mark_buffer_uptodate(bh, 1);
 		mark_buffer_dirty_inode(bh, inode);
-		if (IS_SYNC(inode) || inode->u.ext2_i.i_osync) {
+		if (IS_SYNC(inode) || inode->u.ext2_i.i_osync) { // 这里修改了block中的值 因此需要考虑刷新到磁盘
 			ll_rw_block (WRITE, 1, &bh);
 			wait_on_buffer (bh);
 		}
@@ -456,7 +456,7 @@ static inline int ext2_splice_branch(struct inode *inode,
 
 	/* That's it */
 
-	*where->p = where->key;
+	*where->p = where->key; // 修改 partial *p
 	inode->u.ext2_i.i_next_alloc_block = block;
 	inode->u.ext2_i.i_next_alloc_goal = le32_to_cpu(where[num-1].key);
 	inode->i_blocks += num * inode->i_sb->s_blocksize/512;
@@ -468,7 +468,7 @@ static inline int ext2_splice_branch(struct inode *inode,
 	inode->i_ctime = CURRENT_TIME;
 
 	/* had we spliced it onto indirect block? */
-	if (where->bh) {
+	if (where->bh) { // 因已修改block缓存中的值 因此需尝试刷缓存到磁盘中
 		mark_buffer_dirty_inode(where->bh, inode);
 		if (IS_SYNC(inode) || inode->u.ext2_i.i_osync) {
 			ll_rw_block (WRITE, 1, &where->bh);
@@ -503,7 +503,7 @@ changed:
  * reachable from inode.
  */
 
-static int ext2_get_block(struct inode *inode, long iblock, struct buffer_head *bh_result, int create)
+static int ext2_get_block(struct inode *inode, long iblock, struct buffer_head *bh_result, int create) // 目标是将文件中的偏移block号转化成设备中的偏移block号(buffer已分配)
 {
 	int err = -EIO;
 	int offsets[4];
@@ -518,7 +518,7 @@ static int ext2_get_block(struct inode *inode, long iblock, struct buffer_head *
 
 	lock_kernel();
 reread:
-	partial = ext2_get_branch(inode, depth, offsets, chain, &err); // 这里只是获得了最终要读取的文件系统的block号
+	partial = ext2_get_branch(inode, depth, offsets, chain, &err); // 这里只是获得了最终要读取的文件系统的block号 partial是block(bh)存在但其上面指向下一个block的p(key)值为0
 
 	/* Simplest case - block found, no allocation needed */
 	if (!partial) {
@@ -556,11 +556,11 @@ out:
 
 	left = (chain + depth) - partial;
 	err = ext2_alloc_branch(inode, left, goal,
-					offsets+(partial-chain), partial);
+					offsets+(partial-chain), partial); // 将branch中partial之后的buffer 和 disk中的block绑定
 	if (err)
 		goto cleanup;
 
-	if (ext2_splice_branch(inode, iblock, chain, partial, left) < 0)
+	if (ext2_splice_branch(inode, iblock, chain, partial, left) < 0) // 将partital和branch之前的部分连接上
 		goto changed;
 
 	bh_result->b_state |= (1UL << BH_New);

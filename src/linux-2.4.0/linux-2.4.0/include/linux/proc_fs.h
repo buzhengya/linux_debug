@@ -63,7 +63,7 @@ struct proc_dir_entry {
 	struct file_operations * proc_fops;
 	get_info_t *get_info;
 	struct module *owner;
-	struct proc_dir_entry *next, *parent, *subdir;
+	struct proc_dir_entry *next, *parent, *subdir; // subdir: directory's all sub directory list.
 	void *data;
 	read_proc_t *read_proc;
 	write_proc_t *write_proc;

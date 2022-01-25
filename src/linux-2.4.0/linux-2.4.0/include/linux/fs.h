@@ -413,7 +413,7 @@ struct inode {
 	struct super_block	*i_sb;
 	wait_queue_head_t	i_wait;
 	struct file_lock	*i_flock;
-	struct address_space	*i_mapping;
+	struct address_space	*i_mapping; // usually point to i_data
 	struct address_space	i_data;	
 	struct dquot		*i_dquot[MAXQUOTAS];
 	struct pipe_inode_info	*i_pipe;

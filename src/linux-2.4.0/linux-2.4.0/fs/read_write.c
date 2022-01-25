@@ -129,7 +129,7 @@ asmlinkage ssize_t sys_read(unsigned int fd, char * buf, size_t count)
 			if (!ret) {
 				ssize_t (*read)(struct file *, char *, size_t, loff_t *);
 				ret = -EINVAL;
-				if (file->f_op && (read = file->f_op->read) != NULL)
+				if (file->f_op && (read = file->f_op->read) != NULL) // ext2_file_operations.generic_file_read
 					ret = read(file, buf, count, &file->f_pos);
 			}
 		}
@@ -152,12 +152,12 @@ asmlinkage ssize_t sys_write(unsigned int fd, const char * buf, size_t count)
 		if (file->f_mode & FMODE_WRITE) {
 			struct inode *inode = file->f_dentry->d_inode;
 			ret = locks_verify_area(FLOCK_VERIFY_WRITE, inode, file,
-				file->f_pos, count);
+				file->f_pos, count); // 从flie->f_pos起始的count字节加锁，如果有并发写 则基于加锁顺序确定文件写数据的位置
 			if (!ret) {
 				ssize_t (*write)(struct file *, const char *, size_t, loff_t *);
 				ret = -EINVAL;
 				if (file->f_op && (write = file->f_op->write) != NULL)
-					ret = write(file, buf, count, &file->f_pos);
+					ret = write(file, buf, count, &file->f_pos); // ext2_file_operations->generic_file_write
 			}
 		}
 		if (ret > 0)

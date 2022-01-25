@@ -31,10 +31,10 @@ struct ext2_inode_info { // inode 映射到ext2_inode
 	__u32	i_dtime;
 	__u32	not_used_1;	/* FIX: not used/ 2.2 placeholder */
 	__u32	i_block_group;
-	__u32	i_next_alloc_block;
-	__u32	i_next_alloc_goal;
-	__u32	i_prealloc_block;
-	__u32	i_prealloc_count;
+	__u32	i_next_alloc_block; // 该文件中下一个待分配的block号
+	__u32	i_next_alloc_goal; // 文件所在设备中下一个待分配的block号
+	__u32	i_prealloc_block; // 设备中预分配块的首个可用块号
+	__u32	i_prealloc_count; // 预分配块的数量
 	__u32	i_high_size;
 	int	i_new_inode:1;	/* Is a freshly allocated inode */
 };

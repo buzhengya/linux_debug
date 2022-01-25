@@ -1460,7 +1460,7 @@ static void unmap_underlying_metadata(struct buffer_head * bh)
 {
 	struct buffer_head *old_bh;
 
-	old_bh = get_hash_table(bh->b_dev, bh->b_blocknr, bh->b_size);
+	old_bh = get_hash_table(bh->b_dev, bh->b_blocknr, bh->b_size); // if block has cached in kernel. release it...
 	if (old_bh) {
 		mark_buffer_clean(old_bh);
 		wait_on_buffer(old_bh);
@@ -1581,12 +1581,12 @@ static int __block_prepare_write(struct inode *inode, struct page *page,
 			continue;
 		if (block_start >= to)
 			break;
-		if (!buffer_mapped(bh)) {
-			err = get_block(inode, block, bh, 1);
+		if (!buffer_mapped(bh)) { // 如果尚未建立buffer_head 到 disk block的映射
+			err = get_block(inode, block, bh, 1); // ext2_get_block  基于block计算bh->b_blocknr得到了磁盘中有效的设备地址
 			if (err)
 				goto out;
 			if (buffer_new(bh)) {
-				unmap_underlying_metadata(bh);
+				unmap_underlying_metadata(bh); // bh->b_blocknr可能已经在kernel中已经存在缓存 此时需要将其释放
 				if (Page_Uptodate(page)) {
 					set_bit(BH_Uptodate, &bh->b_state);
 					continue;
@@ -1625,7 +1625,7 @@ out:
 }
 
 static int __block_commit_write(struct inode *inode, struct page *page,
-		unsigned from, unsigned to)
+		unsigned from, unsigned to) // mark buffer_head dirty(move it into lru_list) and wait bdflush kernel thread flush buffer to disk
 {
 	unsigned block_start, block_end;
 	int partial = 0, need_balance_dirty = 0;
@@ -1638,7 +1638,7 @@ static int __block_commit_write(struct inode *inode, struct page *page,
 	    bh != head || !block_start;
 	    block_start=block_end, bh = bh->b_this_page) {
 		block_end = block_start + blocksize;
-		if (block_end <= from || block_start >= to) {
+		if (block_end <= from || block_start >= to) { // if block not update in this write...
 			if (!buffer_uptodate(bh))
 				partial = 1;
 		} else {
@@ -1699,7 +1699,7 @@ int block_read_full_page(struct page *page, get_block_t *get_block)
 
 		if (!buffer_mapped(bh)) {
 			if (iblock < lblock) {
-				if (get_block(inode, iblock, bh, 0))
+				if (get_block(inode, iblock, bh, 0)) // ext2_get_block. cal buffer_head's block number
 					continue;
 			}
 			if (!buffer_mapped(bh)) {

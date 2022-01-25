@@ -84,11 +84,11 @@ static int read_block_bitmap (struct super_block * sb,
 	struct buffer_head * bh = NULL;
 	int retval = -EIO;
 	
-	gdp = ext2_get_group_desc (sb, block_group, NULL);
+	gdp = ext2_get_group_desc (sb, block_group, NULL); // group_desc
 	if (!gdp)
 		goto error_out;
 	retval = 0;
-	bh = bread (sb->s_dev, le32_to_cpu(gdp->bg_block_bitmap), sb->s_blocksize);
+	bh = bread (sb->s_dev, le32_to_cpu(gdp->bg_block_bitmap), sb->s_blocksize); // group's block_bitmap block number...
 	if (!bh) {
 		ext2_error (sb, "read_block_bitmap",
 			    "Cannot read block bitmap - "
@@ -132,7 +132,7 @@ static int __load_block_bitmap (struct super_block * sb,
 			    "block_group = %d, groups_count = %lu",
 			    block_group, sb->u.ext2_sb.s_groups_count);
 
-	if (sb->u.ext2_sb.s_groups_count <= EXT2_MAX_GROUP_LOADED) {
+	if (sb->u.ext2_sb.s_groups_count <= EXT2_MAX_GROUP_LOADED) { // 如果block group <= 8 将block group直接加载到内核即可使用
 		if (sb->u.ext2_sb.s_block_bitmap[block_group]) {
 			if (sb->u.ext2_sb.s_block_bitmap_number[block_group] ==
 			    block_group)
@@ -140,17 +140,17 @@ static int __load_block_bitmap (struct super_block * sb,
 			ext2_error (sb, "__load_block_bitmap",
 				    "block_group != block_bitmap_number");
 		}
-		retval = read_block_bitmap (sb, block_group, block_group);
+		retval = read_block_bitmap (sb, block_group, block_group); // read block to kernel
 		if (retval < 0)
 			return retval;
 		return block_group;
 	}
 
 	for (i = 0; i < sb->u.ext2_sb.s_loaded_block_bitmaps &&
-		    sb->u.ext2_sb.s_block_bitmap_number[i] != block_group; i++)
+		    sb->u.ext2_sb.s_block_bitmap_number[i] != block_group; i++) // 遍历缓存
 		;
 	if (i < sb->u.ext2_sb.s_loaded_block_bitmaps &&
-  	    sb->u.ext2_sb.s_block_bitmap_number[i] == block_group) {
+  	    sb->u.ext2_sb.s_block_bitmap_number[i] == block_group) { // 如果在缓存中找到 更新block的访问时间 基于LRU 将block放到链表头
 		block_bitmap_number = sb->u.ext2_sb.s_block_bitmap_number[i];
 		block_bitmap = sb->u.ext2_sb.s_block_bitmap[i];
 		for (j = i; j > 0; j--) {
@@ -167,9 +167,9 @@ static int __load_block_bitmap (struct super_block * sb,
 		 * then our last attempt to read the bitmap failed and we have
 		 * just ended up caching that failure.  Try again to read it.
 		 */
-		if (!block_bitmap)
+		if (!block_bitmap) // 也有可能已经缓存被释放了？所以要重新加载
 			retval = read_block_bitmap (sb, block_group, 0);
-	} else {
+	} else { // 如果在缓存中未找到 加载到缓存并更新LRU
 		if (sb->u.ext2_sb.s_loaded_block_bitmaps < EXT2_MAX_GROUP_LOADED)
 			sb->u.ext2_sb.s_loaded_block_bitmaps++;
 		else
@@ -207,7 +207,7 @@ static inline int load_block_bitmap (struct super_block * sb,
 	 * Do the lookup for the slot.  First of all, check if we're asking
 	 * for the same slot as last time, and did we succeed that last time?
 	 */
-	if (sb->u.ext2_sb.s_loaded_block_bitmaps > 0 &&
+	if (sb->u.ext2_sb.s_loaded_block_bitmaps > 0 && // 检查是否为上次访问过的block
 	    sb->u.ext2_sb.s_block_bitmap_number[0] == block_group &&
 	    sb->u.ext2_sb.s_block_bitmap[0]) {
 		return 0;
@@ -218,14 +218,14 @@ static inline int load_block_bitmap (struct super_block * sb,
 	 */
 	else if (sb->u.ext2_sb.s_groups_count <= EXT2_MAX_GROUP_LOADED && 
 		 sb->u.ext2_sb.s_block_bitmap_number[block_group] == block_group &&
-		 sb->u.ext2_sb.s_block_bitmap[block_group]) {
+		 sb->u.ext2_sb.s_block_bitmap[block_group]) { // 检查super block的group数是否小于8，如果是且block已经缓存到内核 直接使用
 		slot = block_group;
 	}
 	/*
 	 * If not, then do a full lookup for this block group.
 	 */
 	else {
-		slot = __load_block_bitmap (sb, block_group);
+		slot = __load_block_bitmap (sb, block_group); // 将block group加载到内核缓存数组并返回缓存的下标
 	}
 
 	/*
@@ -353,7 +353,7 @@ error_return:
  * bitmap, and then for any free bit if that fails.
  */
 int ext2_new_block (const struct inode * inode, unsigned long goal,
-    u32 * prealloc_count, u32 * prealloc_block, int * err)
+    u32 * prealloc_count, u32 * prealloc_block, int * err) // 1.基于goal，在goal的附近找一个空闲的block号。2.随机找一个空闲block。
 {
 	struct buffer_head * bh;
 	struct buffer_head * bh2;
@@ -373,9 +373,9 @@ int ext2_new_block (const struct inode * inode, unsigned long goal,
 		return 0;
 	}
 
-	lock_super (sb);
+	lock_super (sb); // super_block lock
 	es = sb->u.ext2_sb.s_es;
-	if (le32_to_cpu(es->s_free_blocks_count) <= le32_to_cpu(es->s_r_blocks_count) &&
+	if (le32_to_cpu(es->s_free_blocks_count) <= le32_to_cpu(es->s_r_blocks_count) && // block remain count is not enough
 	    ((sb->u.ext2_sb.s_resuid != current->fsuid) &&
 	     (sb->u.ext2_sb.s_resgid == 0 ||
 	      !in_group_p (sb->u.ext2_sb.s_resgid)) && 
@@ -392,7 +392,7 @@ repeat:
 	    goal >= le32_to_cpu(es->s_blocks_count))
 		goal = le32_to_cpu(es->s_first_data_block);
 	i = (goal - le32_to_cpu(es->s_first_data_block)) / EXT2_BLOCKS_PER_GROUP(sb);
-	gdp = ext2_get_group_desc (sb, i, &bh2);
+	gdp = ext2_get_group_desc (sb, i, &bh2); // get group description for goal
 	if (!gdp)
 		goto io_error;
 
@@ -402,7 +402,7 @@ repeat:
 		if (j)
 			goal_attempts++;
 #endif
-		bitmap_nr = load_block_bitmap (sb, i);
+		bitmap_nr = load_block_bitmap (sb, i); // 将block bitmap从磁盘中加载到内核并返回缓存的下标
 		if (bitmap_nr < 0)
 			goto io_error;
 		
@@ -410,14 +410,14 @@ repeat:
 
 		ext2_debug ("goal is at %d:%d.\n", i, j);
 
-		if (!ext2_test_bit(j, bh->b_data)) {
+		if (!ext2_test_bit(j, bh->b_data)) { // if goal block free
 #ifdef EXT2FS_DEBUG
 			goal_hits++;
 			ext2_debug ("goal bit allocated.\n");
 #endif
 			goto got_block;
 		}
-		if (j) {
+		if (j) { // 从goal往前搜索63个空闲的block
 			/*
 			 * The goal was occupied; search forward for a free 
 			 * block within the next XX blocks.
@@ -451,7 +451,7 @@ repeat:
 			goto search_back;
 		}
 
-		k = ext2_find_next_zero_bit ((unsigned long *) bh->b_data, 
+		k = ext2_find_next_zero_bit ((unsigned long *) bh->b_data,  // goal附近的没有 搜索整块block
 					EXT2_BLOCKS_PER_GROUP(sb),
 					j);
 		if (k < EXT2_BLOCKS_PER_GROUP(sb)) {
@@ -466,7 +466,7 @@ repeat:
 	 * Now search the rest of the groups.  We assume that 
 	 * i and gdp correctly point to the last group visited.
 	 */
-	for (k = 0; k < sb->u.ext2_sb.s_groups_count; k++) {
+	for (k = 0; k < sb->u.ext2_sb.s_groups_count; k++) { // 在整个设备中搜索、遍历所有的group desc
 		i++;
 		if (i >= sb->u.ext2_sb.s_groups_count)
 			i = 0;

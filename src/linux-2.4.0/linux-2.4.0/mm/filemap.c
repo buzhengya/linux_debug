@@ -289,12 +289,12 @@ static inline struct page * __find_page_nolock(struct address_space *mapping, un
 {
 	goto inside;
 
-	for (;;) {
+	for (;;) { // find page in hast table list.
 		page = page->next_hash;
 inside:
 		if (!page)
 			goto not_found;
-		if (page->mapping != mapping)
+		if (page->mapping != mapping) // must direct to this address_space and  index equal.
 			continue;
 		if (page->index == offset)
 			break;
@@ -304,9 +304,9 @@ inside:
 	 * If we end up with too few inactive pages, we wake
 	 * up kswapd.
 	 */
-	age_page_up(page);
+	age_page_up(page); // update page use time.
 	if (inactive_shortage() > inactive_target / 2 && free_shortage())
-			wakeup_kswapd(0);
+			wakeup_kswapd(0); // try wake up swap kerenl thread.
 not_found:
 	return page;
 }
@@ -453,7 +453,7 @@ void filemap_fdatawait(struct address_space * mapping)
 {
 	spin_lock(&pagecache_lock);
 
-        while (!list_empty(&mapping->locked_pages)) {
+    while (!list_empty(&mapping->locked_pages)) {
 		struct page *page = list_entry(mapping->locked_pages.next, struct page, list);
 
 		list_del(&page->list);
@@ -510,8 +510,8 @@ static inline void __add_to_page_cache(struct page * page,
 	page->flags = flags | (1 << PG_locked);
 	page_cache_get(page);
 	page->index = offset;
-	add_page_to_inode_queue(mapping, page);
-	add_page_to_hash_queue(page, hash);
+	add_page_to_inode_queue(mapping, page); // mapping clean pages.
+	add_page_to_hash_queue(page, hash); // cache hash table
 	lru_cache_add(page);
 }
 
@@ -530,7 +530,7 @@ static int add_to_page_cache_unique(struct page * page,
 	struct page *alias;
 
 	spin_lock(&pagecache_lock);
-	alias = __find_page_nolock(mapping, offset, *hash);
+	alias = __find_page_nolock(mapping, offset, *hash); // if find in hash table. error and release
 
 	err = 1;
 	if (!alias) {
@@ -697,7 +697,7 @@ repeat:
 		page_cache_get(page);
 		spin_unlock(&pagecache_lock);
 
-		lock_page(page);
+		lock_page(page); // set lock bit
 
 		/* Is the page still hashed? Ok, good.. */
 		if (page->mapping)
@@ -1018,7 +1018,7 @@ void do_generic_file_read(struct file * filp, loff_t *ppos, read_descriptor_t * 
 	struct page *cached_page;
 	int reada_ok;
 	int error;
-	int max_readahead = get_max_readahead(inode);
+	int max_readahead = get_max_readahead(inode); // can read ahead, cal ahead read size...
 
 	cached_page = NULL;
 	index = *ppos >> PAGE_CACHE_SHIFT;
@@ -1150,7 +1150,7 @@ page_not_up_to_date:
 
 readpage:
 		/* ... and start the actual read. The read will unlock the page. */
-		error = mapping->a_ops->readpage(filp, page);
+		error = mapping->a_ops->readpage(filp, page); // ext2_aops.ext2_readpage
 
 		if (!error) {
 			if (Page_Uptodate(page))
@@ -2376,14 +2376,14 @@ retry:
 }
 
 static inline struct page * __grab_cache_page(struct address_space *mapping,
-				unsigned long index, struct page **cached_page)
+				unsigned long index, struct page **cached_page) // get page by index form cache.
 {
 	struct page *page, **hash = page_hash(mapping, index);
 repeat:
-	page = __find_lock_page(mapping, index, hash);
+	page = __find_lock_page(mapping, index, hash); // if find in cache
 	if (!page) {
 		if (!*cached_page) {
-			*cached_page = page_cache_alloc();
+			*cached_page = page_cache_alloc(); // alloc from kernel
 			if (!*cached_page)
 				return NULL;
 		}
@@ -2456,10 +2456,10 @@ generic_file_write(struct file *file,const char *buf,size_t count,loff_t *ppos)
 
 	pos = *ppos;
 	err = -EINVAL;
-	if (pos < 0)
+	if (pos < 0) // check write pos
 		goto out;
 
-	err = file->f_error;
+	err = file->f_error; // check file error
 	if (err) {
 		file->f_error = 0;
 		goto out;
@@ -2467,14 +2467,14 @@ generic_file_write(struct file *file,const char *buf,size_t count,loff_t *ppos)
 
 	written = 0;
 
-	if (file->f_flags & O_APPEND)
+	if (file->f_flags & O_APPEND) // check append access mode.
 		pos = inode->i_size;
 
 	/*
 	 * Check whether we've reached the file size limit.
 	 */
 	err = -EFBIG;
-	if (limit != RLIM_INFINITY) {
+	if (limit != RLIM_INFINITY) { // check file limit size
 		if (pos >= limit) {
 			send_sig(SIGXFSZ, current, 0);
 			goto out;
@@ -2489,7 +2489,7 @@ generic_file_write(struct file *file,const char *buf,size_t count,loff_t *ppos)
 	if (count) {
 		remove_suid(inode);
 		inode->i_ctime = inode->i_mtime = CURRENT_TIME;
-		mark_inode_dirty_sync(inode);
+		mark_inode_dirty_sync(inode); // mark inode dirty. add inode to super_block's s_dirty
 	}
 
 	while (count) {
@@ -2502,8 +2502,8 @@ generic_file_write(struct file *file,const char *buf,size_t count,loff_t *ppos)
 		 * allocate a free page.
 		 */
 		offset = (pos & (PAGE_CACHE_SIZE -1)); /* Within page */
-		index = pos >> PAGE_CACHE_SHIFT;
-		bytes = PAGE_CACHE_SIZE - offset;
+		index = pos >> PAGE_CACHE_SHIFT; // page index
+		bytes = PAGE_CACHE_SIZE - offset; // page remain byte size.
 		if (bytes > count) {
 			bytes = count;
 			deactivate = 0;
@@ -2530,15 +2530,15 @@ generic_file_write(struct file *file,const char *buf,size_t count,loff_t *ppos)
 			PAGE_BUG(page);
 		}
 
-		status = mapping->a_ops->prepare_write(file, page, offset, offset+bytes);
+		status = mapping->a_ops->prepare_write(file, page, offset, offset+bytes); // ext2_aops.ext2_prepare_write
 		if (status)
 			goto unlock;
 		kaddr = page_address(page);
-		status = copy_from_user(kaddr+offset, buf, bytes);
+		status = copy_from_user(kaddr+offset, buf, bytes); // copy form page to buffer_head cache...
 		flush_dcache_page(page);
 		if (status)
 			goto fail_write;
-		status = mapping->a_ops->commit_write(file, page, offset, offset+bytes);
+		status = mapping->a_ops->commit_write(file, page, offset, offset+bytes); // ext2_aops.generic_commit_write
 		if (!status)
 			status = bytes;
 

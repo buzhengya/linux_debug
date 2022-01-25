@@ -41,7 +41,7 @@ static inline struct file * fcheck_files(struct files_struct *files, unsigned in
 /*
  * Check whether the specified fd has an open file.
  */
-static inline struct file * fcheck(unsigned int fd)
+static inline struct file * fcheck(unsigned int fd) // check fd and get designated file
 {
 	struct file * file = NULL;
 	struct files_struct *files = current->files;
