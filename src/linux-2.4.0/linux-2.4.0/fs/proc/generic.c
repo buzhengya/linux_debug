@@ -55,7 +55,7 @@ proc_file_read(struct file * file, char * buf, size_t nbytes, loff_t *ppos)
 	int	eof=0;
 	ssize_t	n, count;
 	char	*start;
-	struct proc_dir_entry * dp;
+	struct proc_dir_entre * dp;
 
 	dp = (struct proc_dir_entry *) inode->u.generic_ip;
 	if (!(page = (char*) __get_free_page(GFP_KERNEL)))
@@ -164,7 +164,7 @@ proc_file_lseek(struct file * file, loff_t offset, int orig)
  * returns "serial" in residual.
  */
 static int xlate_proc_name(const char *name,
-			   struct proc_dir_entry **ret, const char **residual)
+			   struct proc_dir_entry **ret, const char **residual) // find proc_dir_entry by name form proc_root. such as name is "slabinfo". target is /proc/slabinfo
 {
 	const char     		*cp = name, *next;
 	struct proc_dir_entry	*de;
@@ -172,11 +172,11 @@ static int xlate_proc_name(const char *name,
 
 	de = &proc_root;
 	while (1) {
-		next = strchr(cp, '/');
-		if (!next)
+		next = strchr(cp, '/'); // find first '/' in cp
+		if (!next) // if string cp not contain '/'
 			break;
 
-		len = next - cp;
+		len = next - cp; // find first name in path.
 		for (de = de->subdir; de ; de = de->next) {
 			if (proc_match(len, cp, de))
 				break;
@@ -238,7 +238,7 @@ static struct dentry_operations proc_dentry_operations =
  * Don't create negative dentries here, return -ENOENT by hand
  * instead.
  */
-struct dentry *proc_lookup(struct inode * dir, struct dentry *dentry)
+struct dentry *proc_lookup(struct inode * dir, struct dentry *dentry) // don't create dentry, just modify exist dentry
 {
 	struct inode *inode;
 	struct proc_dir_entry * de;
@@ -253,16 +253,16 @@ struct dentry *proc_lookup(struct inode * dir, struct dentry *dentry)
 				continue;
 			if (de->namelen != dentry->d_name.len)
 				continue;
-			if (!memcmp(dentry->d_name.name, de->name, de->namelen)) {
+			if (!memcmp(dentry->d_name.name, de->name, de->namelen)) { // if name match
 				int ino = de->low_ino;
 				error = -EINVAL;
-				inode = proc_get_inode(dir->i_sb, ino, de);
+				inode = proc_get_inode(dir->i_sb, ino, de); // find inode
 				break;
 			}
 		}
 	}
 
-	if (inode) {
+	if (inode) { // if exist...
 		dentry->d_op = &proc_dentry_operations;
 		d_add(dentry, inode);
 		return NULL;

@@ -508,7 +508,7 @@ void __init proc_misc_init(void)
 	static struct {
 		char *name;
 		int (*read_proc)(char*,char**,off_t,int,int*,void*);
-	} *p, simple_ones[] = {
+	} *p, simple_ones[] = { // name mapping to deal function.
 		{"loadavg",     loadavg_read_proc},
 		{"uptime",	uptime_read_proc},
 		{"meminfo",	meminfo_read_proc},
@@ -548,7 +548,7 @@ void __init proc_misc_init(void)
 		{NULL,}
 	};
 	for (p = simple_ones; p->name; p++)
-		create_proc_read_entry(p->name, 0, NULL, p->read_proc, NULL);
+		create_proc_read_entry(p->name, 0, NULL, p->read_proc, NULL); // base simple_ones array create read entrys.
 
 	/* And now for trickier ones */
 	entry = create_proc_entry("kmsg", S_IRUSR, &proc_root);

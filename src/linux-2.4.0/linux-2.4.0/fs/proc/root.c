@@ -55,10 +55,10 @@ static struct dentry *proc_root_lookup(struct inode * dir, struct dentry * dentr
 		dir->i_nlink = nlink;
 	}
 
-	if (!proc_lookup(dir, dentry))
+	if (!proc_lookup(dir, dentry)) // when find inode, return null
 		return NULL;
 	
-	return proc_pid_lookup(dir, dentry);
+	return proc_pid_lookup(dir, dentry); // find inode failed.
 }
 
 static int proc_root_readdir(struct file * filp,

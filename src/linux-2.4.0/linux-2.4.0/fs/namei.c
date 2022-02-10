@@ -289,7 +289,7 @@ static struct dentry * real_lookup(struct dentry * parent, struct qstr * name, i
 			if (result)
 				dput(dentry);
 			else
-				result = dentry;
+				result = dentry; // if path is "/proc/..." while modify dentry self.
 		}
 		up(&dir->i_sem);
 		return result;

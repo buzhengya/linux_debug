@@ -143,7 +143,7 @@ if (de && de->deleted)
 printk("proc_iget: using deleted entry %s, count=%d\n", de->name, atomic_read(&de->count));
 #endif
 
-	inode = iget(sb, ino);
+	inode = iget(sb, ino); // find inode in cache and disk(here not exist specific disk device)
 	if (!inode)
 		goto out_fail;
 	

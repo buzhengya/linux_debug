@@ -793,7 +793,7 @@ static struct dentry *proc_base_lookup(struct inode *dir, struct dentry *dentry)
 	for (p = base_stuff; p->name; p++) {
 		if (p->len != dentry->d_name.len)
 			continue;
-		if (!memcmp(dentry->d_name.name, p->name, p->len))
+		if (!memcmp(dentry->d_name.name, p->name, p->len)) // dentry's name conversion to dentry type.
 			break;
 	}
 	if (!p->name)
@@ -930,7 +930,7 @@ struct dentry *proc_pid_lookup(struct inode *dir, struct dentry * dentry)
 		d_add(dentry, inode);
 		return NULL;
 	}
-	while (len-- > 0) {
+	while (len-- > 0) { // cal pid by dentry name
 		c = *name - '0';
 		name++;
 		if (c > 9)
@@ -944,14 +944,14 @@ struct dentry *proc_pid_lookup(struct inode *dir, struct dentry * dentry)
 	}
 
 	read_lock(&tasklist_lock);
-	task = find_task_by_pid(pid);
+	task = find_task_by_pid(pid); // find task by pid
 	if (task)
 		get_task_struct(task);
 	read_unlock(&tasklist_lock);
 	if (!task)
 		goto out;
 
-	inode = proc_pid_make_inode(dir->i_sb, task, PROC_PID_INO);
+	inode = proc_pid_make_inode(dir->i_sb, task, PROC_PID_INO); // make inode by task_struct
 
 	free_task_struct(task);
 
