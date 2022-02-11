@@ -399,7 +399,7 @@ struct inode {
 	uid_t			i_uid;
 	gid_t			i_gid;
 	kdev_t			i_rdev; // 次设备号 表示该种设备的顺序
-	loff_t			i_size; // 
+	loff_t			i_size; // 数据量大小
 	time_t			i_atime; // access
 	time_t			i_mtime; // modify
 	time_t			i_ctime; // create

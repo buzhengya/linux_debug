@@ -34,7 +34,7 @@ struct file * get_empty_filp(void)
 	struct file * f;
 
 	file_list_lock();
-	if (files_stat.nr_free_files > NR_RESERVED_FILES) {
+	if (files_stat.nr_free_files > NR_RESERVED_FILES) { // remain free files
 	used_one:
 		f = list_entry(free_list.next, struct file, f_list);
 		list_del(&f->f_list);

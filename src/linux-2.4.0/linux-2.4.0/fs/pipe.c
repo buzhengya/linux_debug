@@ -27,10 +27,10 @@ void pipe_wait(struct inode * inode)
 {
 	DECLARE_WAITQUEUE(wait, current);
 	current->state = TASK_INTERRUPTIBLE;
-	add_wait_queue(PIPE_WAIT(*inode), &wait);
+	add_wait_queue(PIPE_WAIT(*inode), &wait); // add now thread to waiting queue
 	up(PIPE_SEM(*inode));
-	schedule();
-	remove_wait_queue(PIPE_WAIT(*inode), &wait);
+	schedule(); // 当前线程让出CPU
+	remove_wait_queue(PIPE_WAIT(*inode), &wait); // remove now thread from waiting queue
 	current->state = TASK_RUNNING;
 	down(PIPE_SEM(*inode));
 }
@@ -57,19 +57,19 @@ pipe_read(struct file *filp, char *buf, size_t count, loff_t *ppos)
 	if (down_interruptible(PIPE_SEM(*inode)))
 		goto out_nolock;
 
-	if (PIPE_EMPTY(*inode)) {
+	if (PIPE_EMPTY(*inode)) { // inode.i_size == 0
 do_more_read:
 		ret = 0;
-		if (!PIPE_WRITERS(*inode))
+		if (!PIPE_WRITERS(*inode)) // writers count is 0, no producer
 			goto out;
 
 		ret = -EAGAIN;
-		if (filp->f_flags & O_NONBLOCK)
+		if (filp->f_flags & O_NONBLOCK) // nonblock flag, don't wait read data
 			goto out;
 
 		for (;;) {
-			PIPE_WAITING_READERS(*inode)++;
-			pipe_wait(inode);
+			PIPE_WAITING_READERS(*inode)++; // add waiting readers
+			pipe_wait(inode); // wait until wake up
 			PIPE_WAITING_READERS(*inode)--;
 			ret = -ERESTARTSYS;
 			if (signal_pending(current))
@@ -86,9 +86,9 @@ do_more_read:
 	ret = -EFAULT;
 	while (count > 0 && (size = PIPE_LEN(*inode))) {
 		char *pipebuf = PIPE_BASE(*inode) + PIPE_START(*inode);
-		ssize_t chars = PIPE_MAX_RCHUNK(*inode);
+		ssize_t chars = PIPE_MAX_RCHUNK(*inode); // 剩余可读数据量
 
-		if (chars > count)
+		if (chars > count) // 溢出用户缓冲区
 			chars = count;
 		if (chars > size)
 			chars = size;
@@ -96,10 +96,10 @@ do_more_read:
 		if (copy_to_user(buf, pipebuf, chars))
 			goto out;
 
-		read += chars;
-		PIPE_START(*inode) += chars;
-		PIPE_START(*inode) &= (PIPE_SIZE - 1);
-		PIPE_LEN(*inode) -= chars;
+		read += chars; // 读取chars字节数据
+		PIPE_START(*inode) += chars; // start 偏移 chars 字节
+		PIPE_START(*inode) &= (PIPE_SIZE - 1); // start 可能超出page size，需重置
+		PIPE_LEN(*inode) -= chars; // 读完后修改inode中的剩余可读数据量
 		count -= chars;
 		buf += chars;
 	}
@@ -443,7 +443,7 @@ struct inode* pipe_new(struct inode* inode)
 {
 	unsigned long page;
 
-	page = __get_free_page(GFP_USER);
+	page = __get_free_page(GFP_USER); // page for cache data. only one page
 	if (!page)
 		return NULL;
 
@@ -475,7 +475,7 @@ static struct dentry_operations pipefs_dentry_operations = {
 
 static struct inode * get_pipe_inode(void)
 {
-	struct inode *inode = get_empty_inode();
+	struct inode *inode = get_empty_inode(); // alloc inode struct
 
 	if (!inode)
 		goto fail_inode;
@@ -517,7 +517,7 @@ int do_pipe(int *fd)
 	int i,j;
 
 	error = -ENFILE;
-	f1 = get_empty_filp();
+	f1 = get_empty_filp(); // alloc file struct.
 	if (!f1)
 		goto no_files;
 

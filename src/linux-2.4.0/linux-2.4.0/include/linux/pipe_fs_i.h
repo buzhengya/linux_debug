@@ -2,9 +2,9 @@
 #define _LINUX_PIPE_FS_I_H
 
 #define PIPEFS_MAGIC 0x50495045
-struct pipe_inode_info {
-	wait_queue_head_t wait;
-	char *base;
+struct pipe_inode_info { // Q：缓冲区读写的位置如何同步呢？如果是在file的f_pos上，多线程并发写是f_pos是不会同步的
+	wait_queue_head_t wait; // wait read or write thread
+	char *base; // cache page base start address.
 	unsigned int start;
 	unsigned int readers;
 	unsigned int writers;
